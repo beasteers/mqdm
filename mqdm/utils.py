@@ -13,6 +13,7 @@ def try_len(it, default):
 
 
 class ThreadQueue:
+    '''An event queue to respond to events in a separate thread.'''
     def __init__(self, fn):
         self._fn = fn
         self._closed = False
@@ -37,6 +38,7 @@ class ThreadQueue:
                 continue
 
 class ProcessQueue:
+    '''An event queue to respond to events in a separate process.'''
     def __init__(self, fn):
         self._fn = fn
         self._closed = False
@@ -82,9 +84,10 @@ POOL_EXECUTORS = {
 
 
 class MofNColumn(progress.MofNCompleteColumn):
+    '''A progress column that shows the current vs. total count of items.'''
     def render(self, task):
         total = f'{int(task.total):,}' if task.total is not None else "?"
         return progress.Text(
-            f"{int(task.completed):{len(str(total))},d}{self.separator}{total}",
+            f"{int(task.completed):,d}{self.separator}{total}",
             style="progress.download",
         )

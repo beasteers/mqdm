@@ -25,13 +25,17 @@ mqdm.pool(
 )
 ```
 
+![alt text](static/image.png)
+
 ## Less high level please
 Basically, the mechanics are this:
 ```python
 # use context manager to start background listener and message queue
 with mqdm.Bars() as pbars:
     # create progress bars and send them to the remote processes
-    run_in_other_process(my_work, 5, pbar=pbars.add())
+    pool.submit(my_work, 1, pbar=pbars.add())
+    pool.submit(my_work, 2, pbar=pbars.add())
+    pool.submit(my_work, 3, pbar=pbars.add())
 
 # your worker function can look like this
 def my_work(n, sleep, pbar):

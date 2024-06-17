@@ -1,3 +1,4 @@
+''''''
 import sys
 import queue
 import threading
@@ -21,11 +22,23 @@ def get_pbar(pbar=None, bytes=False):
 
 
 '''
+-- Multi Process:
+
 Bars(**kw) -> add_task(overall, **kw)
 Bars.add(**kw) -> add_task(item, **kw)
-RemoteBar(**kw) -> update(item, **kw)
+
+RemoteBar__init__() -> --
+RemoteBar.__call__(**kw) -> RemoteBar.__enter__(**kw)
+RemoteBar.__enter__(**kw) -> start_task(item, **kw)
 iter(RemoteBar(**kw)) -> start_task(item, **kw)
 RemoteBar.update(**kw) -> update(item, **kw)
+
+-- Single Process:
+
+Bar(**kw) -> add_task(item, **kw)
+Bar.__call__(**kw) -> iter(Bar(**kw))
+Bar.update(**kw) -> update(item, **kw)
+
 '''
     
 
@@ -44,6 +57,9 @@ class Bars:
         self.pbar.__enter__()
         self._pq.__enter__()
         self._tasks = {}
+        # ---------------------------------------------------------------------------- #
+        #                               add overall task                               #
+        # ---------------------------------------------------------------------------- #
         self.overall_task = self.pbar.add_task(self.desc, total=self.total, **self._overall_kw)
         return self
    
@@ -52,6 +68,9 @@ class Bars:
         self.pbar.__exit__(c,v,t)
 
     def add(self, title, visible=False, **kw):
+        # ---------------------------------------------------------------------------- #
+        #                                   add task                                   #
+        # ---------------------------------------------------------------------------- #
         task_id = self.pbar.add_task(title, visible=visible, start=False, **kw)
         self._tasks[task_id] = {}
         return RemoteBar(self._pq.queue, task_id)
@@ -70,36 +89,38 @@ class Bars:
         if task_id is not None:
             self._tasks[task_id].update(**data)
             data.pop('complete', None)
+            # ---------------------------------------------------------------------------- #
+            #                                  update task                                 #
+            # ---------------------------------------------------------------------------- #
             self.pbar.update(task_id, **data)
 
         # update the overall task progress bar
         n_finished = sum(bool(d and d.get('complete', False)) for d in self._tasks.values())
-        # n_finished = sum(bool(d and d['total'] and not d.get('visible', True)) for d in self._tasks.values())
+        # ---------------------------------------------------------------------------- #
+        #                                update overall                                #
+        # ---------------------------------------------------------------------------- #
         self.pbar.update(self.overall_task, completed=n_finished, total=len(self._tasks))
 
     @classmethod
-    def ipool(cls, fn, xs, *a, n_workers=8, desc=None, multi_arg=False, item_kw=None, bar_kw=None, subbar_kw=None, pool_mode='process', **kw):
+    def ipool(cls, fn, xs, *a, n_workers=8, desc=None, mainbar_kw=None, subbar_kw=None, pool_mode='process', **kw):
         """Execute a function in a process pool with a progress bar for each task."""
         # get the arguments for each task
-        args = []
-        for i, x in enumerate(xs):
-            x = x if multi_arg else (x,)
-            ikw = dict(kw, **(item_kw[i] if item_kw else {}))
-            args.append((x, ikw))
+        items = [x if isinstance(x, args) else args(x) for x in xs]
     
         # no workers, just run the function
         if n_workers < 2:
-            for i, (x, ikw) in enumerate(args):
-                desc_i = desc(*x, **ikw) if callable(desc) else desc or f'task {i}'
-                yield fn(*x, *a, pbar=Bar, **ikw)
+            for i, arg in enumerate(items):
+                desc_i = arg(desc or f'task {i}')
+                yield arg(fn, *a, pbar=Bar, **kw)
             return
 
         # run the function in a process pool
         futures = []
-        with utils.POOL_EXECUTORS[pool_mode](max_workers=n_workers) as executor, cls(pool_mode=pool_mode, **(bar_kw or {})) as pbars:
-            for i, (x, ikw) in enumerate(args):
-                desc_i = desc(*x, **ikw) if callable(desc) else desc or f'task {i}'
-                futures.append(executor.submit(fn, *x, *a, pbar=pbars.add(desc_i, **(subbar_kw or {})), **ikw))
+        with utils.POOL_EXECUTORS[pool_mode](max_workers=n_workers) as executor, cls(pool_mode=pool_mode, **(mainbar_kw or {})) as pbars:
+            for i, arg in enumerate(items):
+                desc_i = arg(desc or f'task {i}')
+                pbar = pbars.add(desc_i, **(subbar_kw or {}))
+                futures.append(executor.submit(fn, *arg.a, *a, pbar=pbar, **dict(kw, **arg.kw)))
             for f in as_completed(futures):
                 yield f.result()
 
@@ -112,13 +133,13 @@ class Bars:
     map = pool
 
 
-# class args:
-#     def __init__(self, *a, **kw):
-#         self.a = a
-#         self.kw = kw
+class args:
+    def __init__(self, *a, **kw):
+        self.a = a
+        self.kw = kw
 
-#     def __call__(self, fn, *a, **kw):
-#         return fn(*self.a, *a, **dict(self.kw, **kw))
+    def __call__(self, fn, *a, **kw):
+        return fn(*self.a, *a, **dict(self.kw, **kw)) if callable(fn) else fn
 
 
 class RemoteBar:
@@ -133,6 +154,9 @@ class RemoteBar:
         self.update(0)
     
     def __enter__(self, **kw):
+        # ---------------------------------------------------------------------------- #
+        #                                  start task                                  #
+        # ---------------------------------------------------------------------------- #
         # start the task if it hasn't been started yet
         if not self._started:
             self._call('start_task', task_id=self.task_id, **kw)
@@ -143,6 +167,10 @@ class RemoteBar:
         self.close()
 
     def close(self):
+        self.update(0, complete=True)
+        # ---------------------------------------------------------------------------- #
+        #                                   stop task                                  #
+        # ---------------------------------------------------------------------------- #
         if self._started:
             self._call('stop_task', task_id=self.task_id)
             self._started = False
@@ -157,17 +185,31 @@ class RemoteBar:
                 self.total = kw['total'] = total
             # if kw or total is not None:
             #     self.update(0, **kw)
+            # ---------------------------------------------------------------------------- #
+            #                                  start task                                  #
+            # ---------------------------------------------------------------------------- #
             self.__enter__(**kw)
             return self
+        
+        # --------------------------------- iterable --------------------------------- #
 
         self.total = kw['total'] = utils.try_len(iter, total)
         def _iter():
+            # ---------------------------------------------------------------------------- #
+            #                                  start task                                  #
+            # ---------------------------------------------------------------------------- #
             self.__enter__(**kw)
             try:
                 for x in iter:
                     yield x
+                    # ---------------------------------------------------------------------------- #
+                    #                                    update                                    #
+                    # ---------------------------------------------------------------------------- #
                     self.update()
             finally:
+                # ---------------------------------------------------------------------------- #
+                #                                   stop task                                  #
+                # ---------------------------------------------------------------------------- #
                 self.__exit__(*sys.exc_info())
         return _iter()
     
@@ -199,6 +241,9 @@ class RemoteBar:
         kw.setdefault('total', total)
         kw.setdefault('complete', self.complete)
 
+        # ---------------------------------------------------------------------------- #
+        #                                    update                                    #
+        # ---------------------------------------------------------------------------- #
         self._call('update', completed=self.current, **kw)
         return self
 
@@ -209,6 +254,9 @@ class Bar:
         if isinstance(desc, progress.Progress):
             desc, pbar = None, desc
         self.pbar = get_pbar(pbar, bytes=bytes)
+        # ---------------------------------------------------------------------------- #
+        #                                   add task                                   #
+        # ---------------------------------------------------------------------------- #
         self.task_id = self.pbar.add_task(desc, start=total is not None, total=total, **kw)
         self.pbar.__enter__()
 
@@ -220,17 +268,33 @@ class Bar:
 
     def __call__(self, iter, total=None, **kw):
         with self.pbar:
+            # ---------------------------------------------------------------------------- #
+            #                                 update total                                 #
+            # ---------------------------------------------------------------------------- #
+            # set the initial total
             self.update(0, total=utils.try_len(iter, total), **kw)
+            # loop through the elements
             for i, x in enumerate(iter):
                 yield x
+                # ---------------------------------------------------------------------------- #
+                #                                    update                                    #
+                # ---------------------------------------------------------------------------- #
                 self.update()
 
     def update(self, n=1, total=None, **kw):
+        # start the task if it hasn't been started yet
         if total is not None:
+            # ---------------------------------------------------------------------------- #
+            #                                  start task                                  #
+            # ---------------------------------------------------------------------------- #
             task = self.pbar._tasks[self.task_id]
             if task.start_time is None:
                 self.pbar.start_task(self.task_id)
                 print('starting task', total, task, self.task_id)
+
+        # ---------------------------------------------------------------------------- #
+        #                                    update                                    #
+        # ---------------------------------------------------------------------------- #
         self.pbar.update(self.task_id, advance=n, total=total, **kw)
         return self
 
@@ -248,7 +312,7 @@ def example_fn(i, pbar):
     import random
     from time import sleep
     for i in pbar(range(i + 1)):
-        sleep(random.random())
+        sleep(random.random()*2)
 
 def my_work(n, pbar, sleep=0.2):
     import time
@@ -272,7 +336,7 @@ def example_run():
         example_fn, 
         range(10), 
         # desc=lambda i: f"wowow {i} :o", 
-        bar_kw={'transient': False},
+        mainbar_kw={'transient': False},
         subbar_kw={'transient': False},
         n_workers=5)
 
