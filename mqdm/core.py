@@ -4,7 +4,8 @@ import queue
 import threading
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-from rich import progress, print
+import rich
+from rich import progress
 from . import utils
 
 
@@ -78,11 +79,14 @@ class Bars:
     def close(self):
         self.__exit__(None,None,None)
 
-    def _on_message(self, task_id, method, data):
-        if method == 'update':
-            self._update(task_id, **data)
+    def _on_message(self, task_id, method, args, data):
+        if method == 'print':
+            print(*args, end='')
+            # rich.print(*args, end='', sep=" ", **data)
+        elif method == 'update':
+            self._update(task_id, *args, **data)
         else:
-            getattr(self.pbar, method)(**data)
+            getattr(self.pbar, method)(*args, **data)
 
     def _update(self, task_id, **data):
         # update the task-specific progress bar
@@ -152,6 +156,18 @@ class RemoteBar:
         self._started = False
         self.kw = {}
         self.update(0)
+
+    @property
+    def console(self):
+        if getattr(self, '_console', None) is None:
+            # file=_QueueFile(self._queue, self.task_id)
+            self._console = rich.console.Console(file=_QueueFile(self._queue, self.task_id))
+        return self._console
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['_console'] = None
+        return state
     
     def __enter__(self, **kw):
         # ---------------------------------------------------------------------------- #
@@ -175,6 +191,14 @@ class RemoteBar:
             self._call('stop_task', task_id=self.task_id)
             self._started = False
         return
+    
+    def print(self, *a, **kw):
+        self.console.print(*a, **kw)
+        return self
+    
+    def set_description(self, desc):
+        self.update(0, description=desc)
+        return self
 
     def __call__(self, iter=None, total=None, **kw):
         # if the first argument is a string, use it as the description
@@ -213,8 +237,8 @@ class RemoteBar:
                 self.__exit__(*sys.exc_info())
         return _iter()
     
-    def _call(self, method, **kw):
-        self._queue.put((self.task_id, method, kw))
+    def _call(self, method, *args, **kw):
+        self._queue.put((self.task_id, method, args, kw))
 
     def set(self, value):
         self.current = value
@@ -248,6 +272,23 @@ class RemoteBar:
         return self
 
 
+class _QueueFile:
+    isatty=rich.get_console().file.isatty
+    def __init__(self, q, task_id):
+        self._queue = q
+        self.task_id = task_id
+        self._buffer = []
+        self.kw = {}
+
+    def write(self, *args, **kw):
+        self._buffer.extend(args)
+        self.kw = kw
+
+    def flush(self):
+        if self._buffer:
+            self._queue.put((self.task_id, 'print', self._buffer[:], self.kw))
+            self._buffer = []
+            self.kw = {}
 
 class Bar:
     def __init__(self, desc=None, bytes=False, pbar=None, total=None, **kw):
@@ -281,6 +322,14 @@ class Bar:
                 # ---------------------------------------------------------------------------- #
                 self.update()
 
+    def print(self, *a, **kw):
+        rich.print(*a, **kw)
+        return self
+    
+    def set_description(self, desc):
+        self.update(0, description=desc)
+        return self
+
     def update(self, n=1, total=None, **kw):
         # start the task if it hasn't been started yet
         if total is not None:
@@ -290,7 +339,7 @@ class Bar:
             task = self.pbar._tasks[self.task_id]
             if task.start_time is None:
                 self.pbar.start_task(self.task_id)
-                print('starting task', total, task, self.task_id)
+                # print('starting task', total, task, self.task_id)
 
         # ---------------------------------------------------------------------------- #
         #                                    update                                    #
@@ -312,7 +361,10 @@ def example_fn(i, pbar):
     import random
     from time import sleep
     for i in pbar(range(i + 1)):
-        sleep(random.random()*2)
+        t = random.random()*2 / 10
+        sleep(t)
+        pbar.print(i, "slept for", t)
+        pbar.set_description("sleeping for %.2f" % t)
 
 def my_work(n, pbar, sleep=0.2):
     import time
@@ -332,6 +384,8 @@ def my_other_work(n, pbar, sleep=0.2):
 
 
 def example_run():
+    rich.print("asdf", "asdfasdf")
+    rich.print("asdf", [1,2,3], "asdfasdf")
     Bars.pool(
         example_fn, 
         range(10), 

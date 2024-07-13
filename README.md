@@ -12,7 +12,7 @@ pip install mqdm
 import mqdm
 import time
 
-def my_work(n, sleep, pbar):
+def my_work(n, sleep, pbar: mqdm.RemoteBar):
     for i in pbar(range(n), description=f'counting to {n}'):
         time.sleep(sleep)
 
@@ -43,7 +43,7 @@ def my_work(n, sleep, pbar):
         time.sleep(sleep)
 
 # or this
-def my_work(n, pbar, sleep=0.2):
+def my_work(n, pbar: mqdm.RemoteBar, sleep=0.2):
     import time
     with pbar(description=f'counting to {n}', total=n):
         for i in range(n):
