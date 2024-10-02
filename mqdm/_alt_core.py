@@ -351,6 +351,9 @@ class Bar:
         pass
 
 
+def mqdm(iter, desc=None, bytes=False, pbar=None, total=None, n_workers=0, **kw):
+    return Bar(desc, bytes, pbar, total)(iter, **kw)
+
 
 # ---------------------------------------------------------------------------- #
 #                                   Examples                                   #
