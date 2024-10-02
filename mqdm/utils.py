@@ -2,7 +2,6 @@ import queue
 import threading
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from matplotlib.dates import TH
 import rich
 from rich import progress
 
