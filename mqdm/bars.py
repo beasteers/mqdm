@@ -3,9 +3,8 @@ from functools import wraps
 from concurrent.futures import as_completed
 from typing import Callable
 import rich
-from rich import progress
 from . import utils
-from .bar import get_pbar, Bar
+from .bar import Bar
 import mqdm
 
 '''
@@ -29,74 +28,34 @@ Bar.update(**kw) -> update(item, **kw)
 '''
 
 
-class Bars:
+class Bars(Bar):
     _iter = None
-    _entered = False
-    total = None
 
     def __init__(self, desc=None, *, bytes=False, pbar=None, pool_mode='process', transient=False, **kw):
         self._tasks = {}
         self._pq = utils.POOL_QUEUES[pool_mode](self._on_message)
         self.pool_mode = pool_mode
 
-        if isinstance(desc, progress.Progress):
-            desc, pbar = None, desc
-
-        self.transient = transient
-        self.pbar = get_pbar(pbar, bytes=bytes)
-        self.task_id = self.pbar.add_task(description=desc or "", start=False, **kw)
+        super().__init__(desc, pbar=pbar, bytes=bytes, transient=transient, **kw)
 
     def __enter__(self):
         if not self._entered:
-            self._entered = True
-            self.pbar.__enter__()
             self._pq.__enter__()
-            self.pbar.start_task(self.task_id)
-            mqdm._add_instance(self)
+            super().__enter__()
         return self
 
     def __exit__(self, c,v,t):
         if self._entered:
-            self._entered = False
             self._pq.__exit__(c,v,t)
-            self.pbar.refresh()
-            self.pbar.stop_task(self.task_id)
-            if self.transient:
-                self.pbar.remove_task(self.task_id)
-            mqdm._remove_instance(self)
+            super().__exit__(c,v,t)
 
-    def __del__(self):
-        try:
-            self.__exit__(None, None, None)
-            if not mqdm._instances:
-                self.pbar.__exit__(None, None, None)
-                mqdm.pbar = None
-        except ImportError as e:
-            pass
+    def _get_iter(self, iter, desc=None, **kw):
+        for i, x in enumerate(iter):
+            pbar = self.add(desc=utils.maybe_call(desc, x, i), **kw)
+            yield x, pbar
 
-    def __call__(self, iter, desc=None, total=None, **kw):
-        self.total = utils.try_len(iter) if total is None else total
-        def _iter():
-            for i, x in enumerate(iter):
-                pbar = self.add(desc=utils.maybe_call(desc, x, i), **kw)
-                yield x, pbar
-        def _with_iter():
-            if self._entered:
-                yield from _iter()
-                return
-            with self:
-                yield from _iter()
-        self._iter = _with_iter()
-        return self
-    
     def __len__(self):
         return max(len(self._tasks), self.total or 0)
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        return next(self._iter)
 
     def add(self, desc, visible=False, start=False, **kw):
         task_id = self.pbar.add_task(description=desc or "", visible=visible, start=start, **kw)
@@ -245,6 +204,12 @@ class RemoteBar:
 
     def __next__(self):
         return next(self._iter)
+    
+    def _get_iter(self, iter, **kw):
+        self.update(0, total=self.total, **kw)
+        for i, x in enumerate(iter):
+            yield x
+            self.update()
 
     def __call__(self, iter=None, total=None, **kw):
         if isinstance(iter, str):  # infer string as description
@@ -253,17 +218,12 @@ class RemoteBar:
             return self.update(total=total, **kw)
 
         self.total = utils.try_len(iter) if total is None else total
-        self.update(0, total=self.total, **kw)
-        def _iter():
-            for x in iter:
-                yield x
-                self.update()
         def _with_iter():
             if self._entered:
-                yield from _iter()
+                yield from self._get_iter(iter, **kw)
                 return
             with self:
-                yield from _iter()
+                yield from self._get_iter(iter, **kw)
         self._iter = _with_iter()
         return self
 

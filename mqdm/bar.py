@@ -68,19 +68,20 @@ class Bar:
         except ImportError as e:
             pass
 
-    def __call__(self, iter, total=None, **kw):
+    def _get_iter(self, iter, desc=None, **kw):
+        self.update(0, total=self.total, description=desc, **kw)
+        for i, x in enumerate(iter):
+            yield x
+            self.update()
+
+    def __call__(self, iter, desc=None, total=None, **kw):
         self.total = utils.try_len(iter) if total is None else total
-        def _iter():
-            self.update(0, total=self.total, **kw)
-            for i, x in enumerate(iter):
-                yield x
-                self.update()
         def _with_iter():
             if self._entered:
-                yield from _iter()
+                yield from self._get_iter(iter, desc, **kw)
                 return
             with self:
-                yield from _iter()
+                yield from self._get_iter(iter, desc, **kw)
         self._iter = _with_iter()
         return self
 
