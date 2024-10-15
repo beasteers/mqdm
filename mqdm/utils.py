@@ -1,3 +1,4 @@
+import sys
 import queue
 import threading
 import multiprocessing as mp
@@ -22,6 +23,9 @@ class args:
     def __init__(self, *a, **kw):
         self.a = a
         self.kw = kw
+
+    def __getitem__(self, i):
+        return self.a[i] if isinstance(i, int) else self.kw[i]
 
     def __call__(self, fn, *a, **kw):
         return fn(*self.a, *a, **dict(self.kw, **kw)) if callable(fn) else fn
@@ -94,10 +98,10 @@ class MsgQueue:
     def _read(self, timeout=0.1):
         try:
             xs = self.queue.get(timeout=timeout)
-            self._fn(*xs)
-            return True
         except queue.Empty:
             return False
+        self._fn(*xs)
+        return True
 
     def _monitor(self):
         while not self._closed:
@@ -108,6 +112,9 @@ class MsgQueue:
 
     def get(self, xs, **kw):
         return self.queue.get(xs, **kw)
+
+    def raise_exception(self, e):
+        pass
 
 class SequentialQueue:
     '''An event queue to respond to events in the main thread.'''
@@ -130,6 +137,27 @@ class ThreadQueue(MsgQueue):
     def __init__(self, fn):
         super().__init__(fn)
         self.queue = queue.Queue()
+    #     self._exc_info = None
+
+    # def __enter__(self):
+    #     self._exc_info = None
+    #     return super().__enter__()
+
+    # def raise_exception(self):
+    #     if self._exc_info:
+    #         raise self._exc_info[1].with_traceback(self._exc_info[2])
+
+    # def _read(self, timeout=0.1):
+    #     try:
+    #         xs = self.queue.get(timeout=timeout)
+    #     except queue.Empty:
+    #         return False
+    #     try:
+    #         self._fn(*xs)
+    #     except Exception as e:
+    #         self._exc_info = sys.exc_info()
+    #     return True
+
 
 class ProcessQueue(MsgQueue):
     '''An event queue to respond to events in a separate process.'''

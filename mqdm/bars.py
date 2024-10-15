@@ -31,7 +31,7 @@ Bar.update(**kw) -> update(item, **kw)
 class Bars(Bar):
     _iter = None
 
-    def __init__(self, desc=None, *, bytes=False, pbar=None, pool_mode='process', transient=False, **kw):
+    def __init__(self, desc=None, *, bytes=False, pbar=None, pool_mode='process', transient=True, **kw):
         self._tasks = {}
         self._pq = utils.POOL_QUEUES[pool_mode](self._on_message)
         self.pool_mode = pool_mode
@@ -48,19 +48,25 @@ class Bars(Bar):
         if self._entered:
             self._pq.__exit__(c,v,t)
             super().__exit__(c,v,t)
+            # self._pq.raise_exception()
 
     def _get_iter(self, iter, desc=None, **kw):
         for i, x in enumerate(iter):
-            pbar = self.add(desc=utils.maybe_call(desc, x, i), **kw)
+            pbar = self.add(desc=utils.maybe_call(desc or self._get_desc, x, i), **kw)
             yield x, pbar
 
     def __len__(self):
         return max(len(self._tasks), self.total or 0)
 
     def add(self, desc, visible=False, start=False, **kw):
-        task_id = self.pbar.add_task(description=desc or "", visible=visible, start=start, **kw)
+        task_id = self.pbar.add_task(description=utils.maybe_call(desc or ""), visible=visible, start=start, **kw)
         self._tasks[task_id] = {}
         return RemoteBar(self._pq.queue, task_id)
+
+    def remove(self):
+        for task_id in self._tasks:
+            self.pbar.remove_task(task_id)
+        self.pbar.remove_task(self.task_id)
 
     def _on_message(self, task_id, method, args, data):
         if method == 'raw_print':
@@ -112,10 +118,22 @@ class Bars(Bar):
             mainbar_kw: dict={}, 
             subbar_kw: dict={}, 
             n_workers=8, 
-            ordered=False, 
             pool_mode='process', 
+            ordered_=False, 
+            squeeze_=False,
+            results_=None,
             **kw):
         """Execute a function in a process pool with a progress bar for each task."""
+        if n_workers < 1:
+            pool_mode = 'sequential'
+        try:
+            if squeeze_ and len(iter) == 1:
+                arg = utils.args.from_item(iter[0], *a, **kw)
+                yield arg(fn, pbar=mqdm.mqdm)
+                return
+        except TypeError:
+            pass
+
         # initialize progress bars
         pbars = cls.mqdms(
             iter, 
@@ -126,22 +144,31 @@ class Bars(Bar):
             **(mainbar_kw or {})
         )
 
-        # no workers, just run the function
-        if n_workers < 2 or pool_mode == 'sequential':
-            for arg, pbar in pbars:
-                arg = utils.args.from_item(arg, *a, **kw)
-                yield arg(fn, pbar=pbar)
-            return
+        try:
+            # no workers, just run the function
+            if n_workers < 2 or pool_mode == 'sequential':
+                with pbars:
+                    for arg, pbar in pbars:
+                        arg = utils.args.from_item(arg, *a, **kw)
+                        yield arg(fn, pbar=pbar)
+                return
 
-        # run the function in a process pool
-        with pbars, pbars.executor(max_workers=n_workers) as executor:
-            futures = []
-            for arg, pbar in pbars:
-                arg = utils.args.from_item(arg, *a, **kw)
-                futures.append(executor.submit(fn, *arg.a, pbar=pbar, **arg.kw))
+            # run the function in a process pool
+            with pbars, pbars.executor(max_workers=n_workers) as executor:
+                futures = []
+                for arg, pbar in pbars:
+                    arg = utils.args.from_item(arg, *a, **kw)
+                    futures.append(executor.submit(fn, *arg.a, pbar=pbar, **arg.kw))
 
-            for f in futures if ordered else as_completed(futures):
-                yield f.result()
+                for f in futures if ordered_ else as_completed(futures):
+                    x = f.result()
+                    if results_ is not None:
+                        results_.append(x)
+                    yield x
+        except Exception as e:
+            pbars.remove()
+            raise
+    
 
     @classmethod
     @wraps(ipool)
@@ -160,6 +187,7 @@ class RemoteBar:
     _entered = False
     _console = None
     total = None
+    _get_desc = None
     def __init__(self, q, task_id):
         self._queue = q
         self.task_id = task_id
@@ -208,11 +236,12 @@ class RemoteBar:
     def _get_iter(self, iter, **kw):
         self.update(0, total=self.total, **kw)
         for i, x in enumerate(iter):
+            self.update(i>0, arg_=x)
             yield x
-            self.update()
+        self.update()
 
-    def __call__(self, iter=None, total=None, **kw):
-        if isinstance(iter, str):  # infer string as description
+    def __call__(self, iter=None, total=None, desc=None, **kw):
+        if isinstance(iter, str) and desc is None:  # infer string as description
             iter, kw['description'] = None, iter
         if iter is None:
             return self.update(total=total, **kw)
@@ -234,7 +263,22 @@ class RemoteBar:
     def set_description(self, desc):
         return self.update(None, description=desc or "")
 
-    def update(self, n=1, **kw):
+    def _process_args(self, *, arg_=..., **kw):
+        if 'total' in kw:
+            self.total = kw['total']
+
+        # get description
+        if 'desc' in kw:
+            kw['description'] = kw.pop('desc')
+        if 'description' in kw and callable(kw['description']):
+            self._get_desc = kw.pop('description')
+        if 'description' not in kw and self._get_desc is not None and arg_ is not ...:
+            kw['description'] = self._get_desc(arg_)
+
+        return kw
+
+    def update(self, n=1, *, arg_=..., **kw):
+        kw = self._process_args(arg_=arg_, **kw)
         if n or kw:
             self._call('update', advance=n, **kw)
         return self
