@@ -36,44 +36,56 @@ class Bar:
     _started = False
     total = None
     _get_desc = None
+    _completed = 0
 
-    def __init__(self, desc=None, *, bytes=False, pbar=None, transient=False, **kw):
+    def __init__(self, desc=None, *, bytes=False, pbar=None, transient=False, disable=False, **kw):
         if isinstance(desc, progress.Progress):
             desc, pbar = None, desc
 
         self.transient = transient
+        self.disabled = disable
         self.pbar = get_pbar(pbar, bytes=bytes)
         total = kw.pop('total', None)
         self._started = total is not None
         kw = self._process_args(description=desc or '', total=total, **kw)
         kw.setdefault('description', '')
-        self.task_id = self.pbar.add_task(**kw)
+        self.task_id = self.pbar.add_task(**kw) if not self.disabled else None
 
     def remove(self):
+        if self.disabled: return
         self.pbar.remove_task(self.task_id)
+
+    # @property
+    # def visible(self):
+    #     if self.disabled: return False
+    #     return self.pbar.tasks[self.task_id].visible
 
     def __enter__(self):
         if not self._entered:
             self._entered = True
-            self.pbar.__enter__()
-            self.pbar.start_task(self.task_id)
-            mqdm._add_instance(self)
+            self._completed = 0
+            if not self.disabled:
+                self.pbar.__enter__()
+                self.pbar.start_task(self.task_id)
+                mqdm._add_instance(self)
         return self
 
     def __exit__(self, c,v,t):
         if self._entered:
             self._entered = False
-            self.pbar.refresh()
-            self.pbar.stop_task(self.task_id)
-            if self.transient:
-                self.pbar.remove_task(self.task_id)
-            mqdm._remove_instance(self)
+            if not self.disabled:
+                self.pbar.refresh()
+                self.pbar.stop_task(self.task_id)
+                if self.transient:
+                    self.pbar.remove_task(self.task_id)
+                mqdm._remove_instance(self)
 
     def __del__(self):
         try:
             self.__exit__(None, None, None)
             if not mqdm._instances:
-                self.pbar.__exit__(None, None, None)
+                if not self.disabled:
+                    self.pbar.__exit__(None, None, None)
                 mqdm.pbar = None
         except ImportError as e:
             pass
@@ -108,6 +120,7 @@ class Bar:
 
     @property
     def n(self):
+        if self.disabled: return self._completed  # FIXME
         return self.pbar.tasks[self.task_id].completed
 
     def print(self, *a, **kw):
@@ -136,6 +149,9 @@ class Bar:
         return kw
 
     def update(self, n=1, *, arg_=..., **kw):
+        self._completed = kw['completed'] if 'completed' in kw else (self._completed + n)
+        if self.disabled: return self
+
         # handle indeterminate progress
         if not self._started and self.total is not None:
             self._started = True
@@ -146,8 +162,8 @@ class Bar:
         return self
 
     @classmethod
-    def mqdm(cls, iter=None, desc=None, bytes=False, pbar=None, transient=False, **kw):
-        return cls(desc=desc, bytes=bytes, pbar=pbar, transient=transient)(iter, **kw)
+    def mqdm(cls, iter=None, desc=None, bytes=False, pbar=None, transient=False, disable=False, **kw):
+        return cls(desc=desc, bytes=bytes, pbar=pbar, transient=transient, disable=disable)(iter, **kw)
 
 
 # ---------------------------------------------------------------------------- #

@@ -20,6 +20,24 @@ def _remove_instance(bar):
     while bar in _instances:
         _instances.remove(bar)
 
+# _visibility = {}
+# def hide_instances(hide=True):
+#     if hide:
+#         for bar in _instances:
+#             _visibility[bar] = bar.visible
+#             bar.update(visible=False)
+#     else:
+#         for bar in _instances:
+#             if bar in _visibility:
+#                 bar.update(visible=_visibility[bar])
+
+# def embed():
+#     hide_instances(True)
+#     from IPython import embed
+#     embed()
+#     hide_instances(False)
+
+
 from . import utils
 from .utils import args
 from .bar import Bar
