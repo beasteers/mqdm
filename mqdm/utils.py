@@ -1,10 +1,13 @@
 import sys
+import time
+import random
 import queue
 import threading
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 import rich
 from rich import progress
+from .proxy import get_manager
 
 
 class args:
@@ -73,14 +76,45 @@ def try_len(it, default=None):
         return default
 
 
-class MsgQueue:
+class BaseQueue:
+    def __init__(self, fn):
+        self._fn = fn
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, c,v,t):
+        pass
+
+    def random_id(self):
+        return (0, id(self), time.time(), random.random())
+
+
+class SequentialQueue(BaseQueue):
+    '''An event queue to respond to events in the main thread.'''
+    def __init__(self, fn):
+        self._fn = fn
+        self.queue = self
+
+    def put(self, xs):
+        self._fn(*xs)
+
+
+class MsgQueue(BaseQueue):
     _max_cleanup_attempts = 100
     def __init__(self, fn):
         self._fn = fn
         self._closed = False
         self._thread = threading.Thread(target=self._monitor, daemon=True)
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['_thread'] = None
+        state['_fn'] = None
+        return state
+
     def __enter__(self):
+        if self._thread is None: return self
         self._closed = False
         try:
             self._thread.start()
@@ -90,6 +124,7 @@ class MsgQueue:
     
     def __exit__(self, c,v,t):
         self._closed = True
+        if self._thread is None: return
         self._thread.join()
         for i in range(self._max_cleanup_attempts):
             if not self._read(timeout=0.005):
@@ -116,21 +151,6 @@ class MsgQueue:
     def raise_exception(self, e):
         pass
 
-class SequentialQueue:
-    '''An event queue to respond to events in the main thread.'''
-    def __init__(self, fn):
-        self._fn = fn
-        self.queue = self
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, c,v,t):
-        pass
-
-    def put(self, xs):
-        self._fn(*xs)
-
 
 class ThreadQueue(MsgQueue):
     '''An event queue to respond to events in a separate thread.'''
@@ -138,6 +158,9 @@ class ThreadQueue(MsgQueue):
         super().__init__(fn)
         self.queue = queue.Queue()
     #     self._exc_info = None
+
+    def random_id(self):
+        return (threading.get_ident(), random.random(), id(self), time.time(), random.random())
 
     # def __enter__(self):
     #     self._exc_info = None
@@ -164,22 +187,29 @@ class ProcessQueue(MsgQueue):
     def __init__(self, fn, manager=None):
         self._self_managed = manager is not None
         self._manager = manager or mp.Manager()
+        # self._manager = manager or get_manager() #mp.Manager()
         self.queue = self._manager.Queue()
         super().__init__(fn)
+
+    def random_id(self):
+        return (mp.current_process().pid, id(self), time.time(), random.random())
 
     def __getstate__(self):
         state = self.__dict__.copy()
         state['_manager'] = None
         state['_thread'] = None
+        state['_fn'] = None
         return state
 
     def __enter__(self):
+        if self._thread is None: return self
         if self._self_managed:
             self._manager.__enter__()
         super().__enter__()
         return self
     
     def __exit__(self, c,v,t):
+        if self._thread is None: return
         super().__exit__(c,v,t)
         if self._self_managed:
             self._manager.__exit__(c,v,t)
@@ -197,6 +227,24 @@ POOL_EXECUTORS = {
 }
 
 
+class QueueFile:
+    isatty=rich.get_console().file.isatty
+    def __init__(self, q, task_id=None):
+        self._queue = q
+        self.task_id = task_id
+        self._buffer = []
+        self.kw = {}
+
+    def write(self, *args, **kw):
+        self._buffer.extend(args)
+        self.kw = kw
+
+    def flush(self):
+        if self._buffer:
+            self._buffer, buffer = [], self._buffer
+            self._queue.put((self.task_id, 'raw_print', buffer, self.kw))
+            self.kw = {}
+
 
 class MofNColumn(progress.MofNCompleteColumn):
     '''A progress column that shows the current vs. total count of items.'''
@@ -206,3 +254,38 @@ class MofNColumn(progress.MofNCompleteColumn):
             f"{int(task.completed):,d}{self.separator}{total}",
             style="progress.download",
         )
+
+
+class SpeedColumn(progress.TaskProgressColumn):
+    """Renders human readable transfer speed."""
+    def render(self, task):
+        """Show data transfer speed."""
+        speed = task.finished_speed or task.speed
+        if speed is None:
+            return progress.Text("", style="progress.data.speed")
+        end = 'x/s'
+        if speed < 1:
+            speed = 1 / speed
+            end = 's/x'
+        unit, suffix = progress.filesize.pick_unit_and_suffix(
+            int(speed), ["", "×10³", "×10⁶", "×10⁹", "×10¹²"], 1000)
+        
+        return progress.Text(f"{speed/unit:.1f}{suffix}{end}", justify='right', style="progress.data.speed")
+
+
+class TimeElapsedColumn(progress.TimeRemainingColumn):
+    """Renders time elapsed."""
+    def __init__(self, compact: bool = False, **kw):
+        self._compact = compact
+        super().__init__(**kw)
+
+    def render(self, task):
+        """Show time elapsed."""
+        elapsed = task.finished_time if task.finished else task.elapsed
+        if elapsed is None:
+            return progress.Text("--:--" if self._compact else "-:--:--", style="progress.elapsed")
+        minutes, seconds = divmod(int(elapsed), 60)
+        hours, minutes = divmod(minutes, 60)
+        return progress.Text(
+            (f"{hours:d}:" if hours or not self._compact else "") + 
+            f"{minutes:02d}:{seconds:02d}", style="progress.elapsed")

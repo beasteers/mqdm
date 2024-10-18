@@ -12,8 +12,8 @@ pip install mqdm
 import mqdm
 import time
 
-def my_work(n, sleep, pbar: mqdm.RemoteBar):
-    for i in pbar(range(n), description=f'counting to {n}'):
+def my_work(n, sleep, mqdm: mqdm.RemoteBar):
+    for i in mqdm(range(n), description=f'counting to {n}'):
         time.sleep(sleep)
 
 # executes my task in a concurrent futures process pool
@@ -31,21 +31,23 @@ mqdm.pool(
 Basically, the mechanics are this:
 ```python
 # use context manager to start background listener and message queue
-with mqdm.Bars() as pbars:
+with mqdm.mqdms() as pbars:
     # create progress bars and send them to the remote processes
-    pool.submit(my_work, 1, pbar=pbars.add())
-    pool.submit(my_work, 2, pbar=pbars.add())
-    pool.submit(my_work, 3, pbar=pbars.add())
+    pool.submit(my_work, 1, mqdm=pbars.remote())
+    pool.submit(my_work, 2, mqdm=pbars.remote())
+    pool.submit(my_work, 3, mqdm=pbars.remote())
 
 # your worker function can look like this
-def my_work(n, sleep, pbar):
-    for i in pbar(range(n), description=f'counting to {n}'):
+def my_work(n, sleep=1, mqdm: mqdm.Remote):
+    # It takes a proxy mqdm instance that can create new progress bars
+    for i in mqdm(range(n), description=f'counting to {n}'):
         time.sleep(sleep)
+        mqdm.print("hi")
 
 # or this
-def my_work(n, pbar: mqdm.RemoteBar, sleep=0.2):
+def my_work(n, sleep=1, mqdm: mqdm.Remote):
     import time
-    with pbar(description=f'counting to {n}', total=n):
+    with mqdm(description=f'counting to {n}', total=n) as pbar:
         for i in range(n):
             pbar.update(0.5, description=f'Im counting - {n}  ')
             time.sleep(sleep/2)
@@ -63,7 +65,7 @@ items = range(1, 10)
 
 with ProcessPoolExecutor(max_workers=n_workers) as pool, mqdm.Bars() as pbars:
     futures = [
-        pool.submit(my_work, i, pbar=pbars.add())
+        pool.submit(my_work, i, pbar=pbars.remote())
         for i in items
     ]
     for f in as_completed(futures):
