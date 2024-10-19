@@ -1,5 +1,5 @@
 # mqdm: progress bars for multiprocessing
-Pretty progress bars with `rich`, in your child processes.
+Pretty progress bars using `rich`, in your child processes.
 
 ## Install
 
@@ -7,12 +7,26 @@ Pretty progress bars with `rich`, in your child processes.
 pip install mqdm
 ```
 
-## Worker progress
+## Normal tqdm-style progress bars
+```python
+import mqdm
+
+items = range(10)
+
+# nested loop progress
+for x in mqdm.mqdm(items):
+    # your description can change for each item
+    for y in mqdm.mqdm(items, desc=lambda y, i: f'item {x} {y}'):
+        print(x, y)
+```
+
+
+## Progress of work across worker pools
 ```python
 import mqdm
 import time
 
-def my_work(n, sleep, mqdm: mqdm.RemoteBar):
+def my_work(n, sleep, mqdm: mqdm.Bar):
     for i in mqdm(range(n), description=f'counting to {n}'):
         time.sleep(sleep)
 

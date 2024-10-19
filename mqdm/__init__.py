@@ -1,60 +1,56 @@
-# from rich import print
+import sys
 import rich
 from rich import progress
+from rich.prompt import Prompt
+from rich.console import Text
+
 
 _manager = None
-_remote = None
 _instances = []
 pbar = None
 
 import mqdm as mqdm_  # self
+from . import proxy
 
 
 
-def new_pbar(bytes=False, **kw):
+def new_pbar(bytes=False, pool_mode=None, **kw):
     kw.setdefault('refresh_per_second', 8)
-    cls = progress.Progress
-    if mqdm_._manager:
-        cls = mqdm_._manager.mqdm_Progress
-    # print(cls)
+    cls = proxy.Progress
+    if pool_mode == 'process':
+        cls = proxy.get_manager().mqdm_Progress
     return cls(
         "[progress.description]{task.description}",
         progress.BarColumn(bar_width=None),
         "[progress.percentage]{task.percentage:>3.0f}%",
-        *([progress.DownloadColumn()] if bytes else [utils.MofNColumn()]),
-        *([progress.TransferSpeedColumn()] if bytes else [utils.SpeedColumn()]),
-        progress.TimeRemainingColumn(compact=True),
+        utils.MofNColumn(bytes=bytes),
+        utils.SpeedColumn(bytes=bytes),
         utils.TimeElapsedColumn(compact=True),
+        progress.TimeRemainingColumn(compact=True),
         progress.SpinnerColumn(),
         **kw,
     )
 
 
-def get_pbar(pbar=None, **kw):
-    new = False
-    if not pbar and not mqdm_.pbar:
-        pbar = new_pbar(**kw)
-        new = True
+def get_pbar(pbar=None, pool_mode=None, **kw):
+    if not pbar and pool_mode == 'process' and not mqdm_._manager:
+        pbar = new_pbar(pool_mode=pool_mode, **kw)
+    elif not pbar and not mqdm_.pbar:
+        pbar = new_pbar(pool_mode=pool_mode, **kw)
     if pbar:
         if mqdm_.pbar:
             mqdm_.pbar.stop()
         mqdm_.pbar = pbar
-    if new:
         pbar.start()
     return mqdm_.pbar
 
 
-def _pbar_initializer(pbar):
-    mqdm_.pbar = pbar
-
-
 def print(*args, **kw):
     """Print with rich."""
-    # if _remote is not None:
-    #     _remote.print(*args, **kw)
     if pbar is not None:
-        pbar.print(*args, **kw)
+        return pbar.print_(*args, **kw)
     return rich.print(*args, **kw)
+
 
 def get(i=-1):
     """Get a progress bar instance."""
@@ -63,9 +59,11 @@ def get(i=-1):
     except IndexError:
         raise IndexError(f'No progress bar found at index {i} in list of length {len(_instances)}')
 
+
 def set_description(desc, i=-1):
     """Set the description of the last progress bar."""
     return get(i).set_description(desc)
+
 
 def _add_instance(bar):
     if bar not in _instances:
@@ -78,14 +76,27 @@ def _remove_instance(bar):
 
 
 def pause(paused=True):
+    """Pause the progress bars. Useful for opening an interactive shell or printing stack traces."""
+    prev_paused = getattr(pbar, 'paused', False)
     if pbar is not None:
+        pbar.paused = paused
         if paused:
             pbar.stop()
         else:
             pbar.start()
+    return _pause_exit(prev_paused)
+
+class _pause_exit:
+    def __init__(self, prev_paused):
+        self.prev_paused = prev_paused  # it was paused before we got here
+        _pause_exit.last = self  # if another pause was called, ignore this one
+    def __enter__(self): pass
+    def __exit__(self, c, exc, t): 
+        if not exc and not self.prev_paused and self is _pause_exit.last:  # dont unpause for exceptions
+            pause(False)
 
 
-def embed():
+def embed(*a, prompt='ipython?> ', exit_prompt=True):
     """Embed an IPython shell in the current environment. This will make sure the progress bars don't interfere.
     
     This function is useful for debugging and interactive exploration.
@@ -100,17 +111,23 @@ def embed():
             if i == 5:
                 mqdm.embed()
     """
-    try:
-        pause(True)
-        from IPython import embed
-        # IPython.InteractiveShellEmbed.mainloop
-        # import inspect
-        # frame = inspect.currentframe().f_back
-        # namespace = frame.f_globals.copy()
-        # namespace.update(frame.f_locals)
-        embed(colors='neutral')
-    finally:
-        pause(False)
+    with pause():
+        from ._embed import embed
+        if not prompt or _Prompt.ask(Text(f'{prompt}', style="dim cyan")): 
+            a and mqdm_.print(*a)
+            embed(colors='neutral', stack_depth=1)
+            exit_prompt and Prompt.ask(Text('continue?> ', style="bold magenta"))
+
+
+class _Prompt(Prompt):
+    prompt_suffix = '\033[F'
+
+def bp(*a, prompt='ipython?> '):
+    """Breakpoint"""
+    with pause():
+        if not prompt or Prompt.ask(Text(prompt, style="dim cyan")):
+            a and mqdm_.print(*a)
+            breakpoint()
 
 
 def iex(func):
@@ -120,14 +137,20 @@ def iex(func):
 
     Does not work in subprocesses for obvious reasons.
     """
-    import functools
-    import ipdb
-    @ipdb.iex
+    import functools, fnmatch
+    from pdbr import pdbr_context
+    # from ipdb import iex
+    @pdbr_context()
     def inner(*a, **kw):
+        _rich_traceback_omit = True
         try:
             return func(*a, **kw)
-        except Exception as e:
+        except:
             pause(True)
+            rich.console.Console().print_exception(suppress=[m for k, m in sys.modules.items() if any(
+                fnmatch.fnmatch(k, p) for p in ['fire', 'concurrent.futures', 'threading', 'multiprocessing'])])
+            cmds='h: help, u: up, d: down, l: code, v: vars, vt: varstree, w: stack, i {var}: inspect'
+            rich.print("\n[bold dim]Commands - [/bold dim] " + ", ".join("[bold green]{}[/bold green]:[dim]{}[/dim]".format(*c.split(':')) for c in cmds.split(', ')))
             raise
     @functools.wraps(func)
     def outer(*a, **kw):
@@ -136,11 +159,6 @@ def iex(func):
         finally:
             pause(False)
     return outer
-
-
-def as_remote():
-    from .proxy import get_manager
-    get_manager()
 
 
 from . import utils
