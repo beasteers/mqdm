@@ -1,25 +1,31 @@
-import sys
+from contextlib import contextmanager
+
 import rich
 from rich import progress
-from rich.prompt import Prompt
-from rich.console import Text
+
+
+import mqdm as M  # self
+from . import proxy
+from . import utils
+from .utils import T_POOL_MODE
+from .utils import args, executor
+from .utils import embed, inp, bp, iex
 
 
 _manager = None
 _instances = []
-pbar = None
-
-import mqdm as mqdm_  # self
-from . import proxy
+_keep = False
+pbar: 'proxy.Progress|proxy.ProgressProxy' = None
 
 
+# ---------------------------------------------------------------------------- #
+#                               Progress methods                               #
+# ---------------------------------------------------------------------------- #
 
-def new_pbar(bytes=False, pool_mode=None, **kw):
+
+def _new_pbar(pool_mode: T_POOL_MODE=None, bytes=False, **kw):
     kw.setdefault('refresh_per_second', 8)
-    cls = proxy.Progress
-    if pool_mode == 'process':
-        cls = proxy.get_manager().mqdm_Progress
-    return cls(
+    return proxy.get_progress_cls(pool_mode)(
         "[progress.description]{task.description}",
         progress.BarColumn(bar_width=None),
         "[progress.percentage]{task.percentage:>3.0f}%",
@@ -32,28 +38,68 @@ def new_pbar(bytes=False, pool_mode=None, **kw):
     )
 
 
-def get_pbar(pbar=None, pool_mode=None, **kw):
-    if not pbar and pool_mode == 'process' and not mqdm_._manager:
-        pbar = new_pbar(pool_mode=pool_mode, **kw)
-    elif not pbar and not mqdm_.pbar:
-        pbar = new_pbar(pool_mode=pool_mode, **kw)
-    if pbar:
-        if mqdm_.pbar:
-            mqdm_.pbar.stop()
-        mqdm_.pbar = pbar
-        pbar.start()
-    return mqdm_.pbar
+def _get_pbar(pool_mode: T_POOL_MODE=None, start=True, **kw):
+    # no progress bar yet, create one
+    if not M.pbar:
+        # print("New progress bar", pool_mode)
+        M.pbar = _new_pbar(pool_mode=pool_mode, **kw)
+    # need to create multiprocess-compatible progress bar
+    elif pool_mode == 'process' and not M.pbar.multiprocess:
+        # print("Converting proxy")
+        M.pbar = M.pbar.convert_proxy()
+    if start:
+        M.pbar.start()
+    return M.pbar
+
+
+def _clear_pbar(strict=True, force=False, soft=False):
+    """Clear the progress bar."""
+    if force:
+        for bar in _instances[::-1]:
+            bar._remove(False)
+            bar.disable = True
+        M.pbar.stop()
+        M.pbar = None
+    if M._instances:
+        if strict:
+            raise RuntimeError("Cannot clear progress bar while instances are still active.")
+    elif not utils.is_main_process():
+        if strict:
+            raise RuntimeError("Cannot clear progress bar in a subprocess.")
+    elif soft or M._keep:
+        if M.pbar is not None:
+            M.pbar.refresh()
+    else:
+        if M.pbar is not None:
+            M.pbar.stop()
+        M.pbar = None
+
+
+@contextmanager
+def group():
+    """Group progress bars."""
+    try:
+        M._keep = True
+        yield 
+    finally:
+        M._keep = False
+        _clear_pbar()
+
+
+# ---------------------------------------------------------------------------- #
+#                            Global context methods                            #
+# ---------------------------------------------------------------------------- #
 
 
 def print(*args, **kw):
     """Print with rich."""
     if pbar is not None:
-        return pbar.print_(*args, **kw)
+        return pbar.print(*args, **kw)
     return rich.print(*args, **kw)
 
 
 def get(i=-1):
-    """Get a progress bar instance."""
+    """Get an mqdm instance."""
     try:
         return _instances[i]
     except IndexError:
@@ -63,6 +109,16 @@ def get(i=-1):
 def set_description(desc, i=-1):
     """Set the description of the last progress bar."""
     return get(i).set_description(desc)
+
+
+def set(i=-1, **kw):
+    """Set the last progress bar."""
+    return get(i).set(**kw)
+
+
+def update(n=1, i=-1, **kw):
+    """Update the last progress bar."""
+    return get(i).update(n, **kw)
 
 
 def _add_instance(bar):
@@ -96,82 +152,19 @@ class _pause_exit:
             pause(False)
 
 
-def embed(*a, prompt='ipython?> ', exit_prompt=True):
-    """Embed an IPython shell in the current environment. This will make sure the progress bars don't interfere.
-    
-    This function is useful for debugging and interactive exploration.
-
-    Does not work in subprocesses for obvious reasons.
-
-    .. code-block:: python
-
-        import mqdm
-
-        for i in mqdm.mqdm(range(10)):
-            if i == 5:
-                mqdm.embed()
-    """
-    with pause():
-        from ._embed import embed
-        if not prompt or _Prompt.ask(Text(f'{prompt}', style="dim cyan")): 
-            a and mqdm_.print(*a)
-            embed(colors='neutral', stack_depth=1)
-            exit_prompt and Prompt.ask(Text('continue?> ', style="bold magenta"))
+# ---------------------------------------------------------------------------- #
+#                               Primary interface                              #
+# ---------------------------------------------------------------------------- #
 
 
-class _Prompt(Prompt):
-    prompt_suffix = '\033[F'
+from .bar import mqdm, pool, ipool
 
-def bp(*a, prompt='ipython?> '):
-    """Breakpoint"""
-    with pause():
-        if not prompt or Prompt.ask(Text(prompt, style="dim cyan")):
-            a and mqdm_.print(*a)
-            breakpoint()
-
-
-def iex(func):
-    """Decorator to embed an IPython shell in the current environment when an exception is raised. This makes sure the progress bars don't interfere.
-    
-    This lets you do post-mortem debugging of the Exception stack trace.
-
-    Does not work in subprocesses for obvious reasons.
-    """
-    import functools, fnmatch
-    from pdbr import pdbr_context
-    # from ipdb import iex
-    @pdbr_context()
-    def inner(*a, **kw):
-        _rich_traceback_omit = True
-        try:
-            return func(*a, **kw)
-        except:
-            pause(True)
-            rich.console.Console().print_exception(suppress=[m for k, m in sys.modules.items() if any(
-                fnmatch.fnmatch(k, p) for p in ['fire', 'concurrent.futures', 'threading', 'multiprocessing'])])
-            cmds='h: help, u: up, d: down, l: code, v: vars, vt: varstree, w: stack, i {var}: inspect'
-            rich.print("\n[bold dim]Commands - [/bold dim] " + ", ".join("[bold green]{}[/bold green]:[dim]{}[/dim]".format(*c.split(':')) for c in cmds.split(', ')))
-            raise
-    @functools.wraps(func)
-    def outer(*a, **kw):
-        try:
-            return inner(*a, **kw)
-        finally:
-            pause(False)
-    return outer
-
-
-from . import utils
-from .utils import args
-from .bar import Bar
-from .bars import Bars
-pool = Bars.pool
-mqdm = Bar.mqdm
-mqdms = Bars.mqdms
-mqdm_pool = Bars.pool
+# more descriptive names to avoid polluting the namespace
+mqpool = pool
+mqipool = ipool
 
 __all__ = [
     'mqdm',
-    'mqdms',
-    'mqdm_pool',
+    'mqpool',
+    'mqipool',
 ]

@@ -3,12 +3,12 @@ from functools import wraps
 from concurrent.futures import as_completed, Executor
 from typing import Callable, Iterable, Literal
 from . import utils
-from .bar import Bar
+from .bar import mqdm
 import mqdm
 
 T_POOL_MODE = Literal['process', 'thread', 'sequential', None]
 
-class Bars(Bar):
+class Bars(mqdm):
     """A progress bar that contains multiple sub progress bars.
 
     The main progress bar is used to track the completion of the sub progress bars.
@@ -16,15 +16,22 @@ class Bars(Bar):
     TODO: The main progress bar's estimated time should incorporate the estimated times of the sub progress bars.
     """
     _get_sub_desc = None
-    def __init__(self, desc: str|Callable=None, *, pool_mode: T_POOL_MODE='process', transient=True, **kw):
-        super().__init__(desc, transient=transient, pool_mode=pool_mode, **kw)
+    def __init__(self, desc: str|Callable=None, *, pool_mode: T_POOL_MODE='process', transient=True, bar_kw=None, **kw):
+        kw = {**(bar_kw or {}), 'transient': transient, **kw}
+        super().__init__(desc, pool_mode=pool_mode, **kw)
         # default child progress bar keyword arguments
         self._subbar_kw = {
             'transient': transient, 
-            'disabled': self.disabled, 
+            'disable': self.disabled, 
             'visible': False, 
             'start': False,
+            **(bar_kw or {}),
         }
+
+    def __getstate__(self):
+        state = super().__getstate__()
+        state['_get_sub_desc'] = None  # cannot pickle lambda
+        return state
 
     def _get_iter(self, iter, **kw):
         for i, x in enumerate(iter):
@@ -32,22 +39,27 @@ class Bars(Bar):
             pbar = self.add(desc=utils.maybe_call(self._get_sub_desc, x, i) or '', **kw)
             yield x, pbar
 
-    def __call__(self, iter, desc=None, DESC=None, **kw):
-        """Iterate over an iterable with a progress bar."""
-        if desc is None:
-            self._get_sub_desc = lambda x, i: f'task {i}'
-        elif isinstance(desc, str):
-            self._get_sub_desc = lambda x, i: desc.format(x=x, i=i)
-        else:
-            self._get_sub_desc = desc
-        return super().__call__(iter, DESC, **kw)
+    # def __call__(self, iter, desc=None, DESC=None, **kw):
+    #     """Iterate over an iterable with a progress bar."""
+    #     if desc is None:
+    #         self._get_sub_desc = lambda x, i: f'task {i}'
+    #     elif isinstance(desc, str):
+    #         self._get_sub_desc = lambda x, i: desc.format(x=x, i=i)
+    #     else:
+    #         self._get_sub_desc = desc
+    #     return super().__call__(iter, DESC, **kw)
+
+    def _process_args(self, *, task_desc=None, **kw):
+        if task_desc is not None:
+            self._get_sub_desc = task_desc
+        return super()._process_args(**kw)
 
     def add(self, desc="", **kw):
         """Add a sub progress bar to the main progress bar."""
-        return Bar(desc, parent_task_id=self.task_id, **{**self._subbar_kw, **kw, 'pool_mode': self.pool_mode})
+        return mqdm(desc, parent_task_id=self.task_id, **{**self._subbar_kw, **kw, 'pool_mode': self.pool_mode})
 
     @classmethod
-    def mqdms(cls, iter=None, desc=None, DESC=None, bytes=False, transient=False, subbar_kw={}, **kw):
+    def mqdms(cls, iter=None, desc=None, DESC=None, bytes=False, transient=False, bar_kw={}, **kw):
         """Create a progress bar group for each item in an iterable.
         
         Args:
@@ -59,18 +71,17 @@ class Bars(Bar):
             subbar_kw (dict, optional): Additional keyword arguments for the sub progress bars.
             **kw: Additional keyword arguments for the main progress bar.
         """
-        return cls(desc=DESC, bytes=bytes, transient=transient, **kw)(iter, desc, **(subbar_kw or {}))
+        return cls(desc=DESC, bytes=bytes, transient=transient, bar_kw=bar_kw)(iter, desc, **kw)
 
     @classmethod
     def ipool(
             cls, 
             fn: Callable, 
             iter: Iterable, 
-            *a, 
-            desc: str|Callable=..., 
-            DESC: str="", 
-            mainbar_kw: dict={}, 
-            subbar_kw: dict={}, 
+            desc: str='', 
+            task_desc: str|Callable=None,
+            main_kw: dict={}, 
+            bar_kw: dict={}, 
             n_workers: int=8, 
             pool_mode: T_POOL_MODE='process', 
             ordered_: bool=False, 
@@ -82,10 +93,9 @@ class Bars(Bar):
         Args:
             fn (Callable): The function to execute.
             iter (Iterable): The iterable to iterate over.
-            desc (str, Callable, optional): The description of the sub progress bars. Can be a function that takes the item and index as arguments. Defaults to (lambda x, i: f'task {i}').
-            DESC (str, optional): The description of the main progress bar. 
-            mainbar_kw (dict, optional): Additional keyword arguments for the main progress bar.
-            subbar_kw (dict, optional): Additional keyword arguments for the sub progress bars.
+            desc (str, optional): The description of the main progress bar. 
+            main_kw (dict, optional): Additional keyword arguments for the main progress bar.
+            bar_kw (dict, optional): Additional keyword arguments for the sub progress bars.
             n_workers (int, optional): The number of workers in the pool. Defaults to 8.
             pool_mode (str, optional): The mode of the pool. Can be 'process', 'thread', 'sequential'. Defaults to 'process'.
             ordered_ (bool, optional): Whether to yield the results in order. Defaults to False.
@@ -98,8 +108,8 @@ class Bars(Bar):
 
         # if the iterable is a single item, just run the function
         if squeeze_ and utils.try_len(iter, -1) == 1:
-            arg = utils.args.from_item(iter[0], *a, **kw)
-            yield arg(fn, pbar=mqdm.mqdm)
+            arg = utils.args.from_item(iter[0], **kw)
+            yield arg(fn, mqdm=mqdm.mqdm)
             if results_ is not None:
                 results_.append(x)
             return
@@ -107,11 +117,11 @@ class Bars(Bar):
         # initialize progress bars
         pbars = cls.mqdms(
             iter, 
+            desc=desc,
+            task_desc=task_desc or (lambda x, i: f'task {i}'),
             pool_mode=pool_mode, 
-            desc=(lambda x, i: f'task {i}') if desc is ... else (desc or ""), 
-            DESC=DESC,
-            subbar_kw=subbar_kw, 
-            **(mainbar_kw or {})
+            bar_kw=bar_kw, 
+            **(main_kw or {})
         )
 
         try:
@@ -119,8 +129,8 @@ class Bars(Bar):
                 # no multiple workers, just run the function sequentially
                 if pool_mode in {'sequential', None}:
                     for arg, pbar in pbars:
-                        arg = utils.args.from_item(arg, *a, **kw)
-                        x = arg(fn, mqdm=pbar)
+                        arg = utils.args.from_item(arg, **kw)
+                        x = arg(fn, pbar=pbar)
                         if results_ is not None:
                             results_.append(x)
                         yield x
@@ -130,8 +140,8 @@ class Bars(Bar):
                 with pbars.executor(max_workers=n_workers) as executor:
                     futures = []
                     for arg, pbar in pbars:
-                        arg = utils.args.from_item(arg, *a, **kw)
-                        futures.append(executor.submit(fn, *arg.a, mqdm=pbar, **arg.kw))
+                        arg = utils.args.from_item(arg, **kw)
+                        futures.append(executor.submit(fn, *arg.a, pbar=pbar, **arg.kw))
 
                     # get function results
                     for f in futures if ordered_ else as_completed(futures):
@@ -152,7 +162,7 @@ class Bars(Bar):
 
     def executor(self, **kw) -> Executor:
         """Return the appropriate executor for the pool mode of the progress bar."""
-        return utils.POOL_EXECUTORS[self.pool_mode](initializer=mqdm.proxy._pbar_initializer, initargs=[mqdm.pbar, self.task_id], **kw)
+        return utils.POOL_EXECUTORS[self.pool_mode](initializer=mqdm.proxy.pbar_initializer, initargs=[mqdm.pbar, self.task_id], **kw)
 
 # ---------------------------------------------------------------------------- #
 #                                   Examples                                   #
@@ -166,7 +176,7 @@ def example_fn(i, mqdm, error=False, sleep=1):
         t = sleep * random.random()*2 / (i+1)
         time.sleep(t)
         mqdm.print(i, "slept for", t)
-        mqdm.set_description("sleeping for %.2f" % t)
+        # mqdm.set_description("sleeping for %.2f" % t)
         if error: 1/0
 
 
@@ -196,9 +206,9 @@ def example(n=10, transient=False, n_workers=5, **kw):
         # my_work, 
         # my_other_work,
         range(n), 
-        DESC='[bold blue]Very important work',
-        mainbar_kw={'transient': transient},
-        subbar_kw={'transient': transient},
+        '[bold blue]Very important work',
+        # main_kw={'transient': transient},
+        bar_kw={'transient': transient},
         n_workers=n_workers,
         **kw)
     mqdm.print("done in", time.time() - t0, "seconds", 123)
