@@ -1,24 +1,20 @@
 import dataclasses
+import threading
 from typing import Type
 from functools import wraps
 import multiprocessing as mp
 from multiprocessing.managers import BaseProxy, SyncManager
 import multiprocessing.managers
-import mqdm
 import rich
 from rich import progress
-from .utils import T_POOL_MODE, _RedirectIO
+from .executor import T_POOL_MODE
+import mqdm as M
 
-
-def get_progress_cls(pool_mode: T_POOL_MODE=None):
-    if pool_mode == 'process':
-        return get_manager().mqdm_Progress
-    return Progress
 
 class Progress(progress.Progress):
     multiprocess = False
 
-    def __init__(self, *columns, _tasks=None, _task_index=None, **kw):
+    def __init__(self, *columns, _tasks=None, _task_index=None, _pause_event=None, **kw):
         super().__init__(*columns, **kw)
 
         # save init options in case we need to recreate the object in a different process
@@ -27,6 +23,9 @@ class Progress(progress.Progress):
         if _tasks is not None:
             self._tasks = {task_id: self._load_task(**task) for task_id, task in _tasks.items()}
         self._task_index = progress.TaskID(_task_index or 0)
+        # self._pause_event = _pause_event
+        # if self._pause_event is not None:  # is this necessary if start exists?
+        #     self._pause_event.set()
 
     def print(self, *args, **kw):
         """Print to the console."""
@@ -38,10 +37,28 @@ class Progress(progress.Progress):
             kw.pop('description')
         return super().update(task_id, **kw)
     
+    @wraps(progress.Progress.update)
+    def update_(self, task_id, **kw):
+        if 'description' in kw and kw['description'] is None:  # ignore None descriptions
+            kw.pop('description')
+        try:
+            return super().update(task_id, **kw)
+        except KeyError as e:
+            pass
+    
+    def clear(self):
+        """Clear the progress bar."""
+        self._tasks.clear()
+    
+    # def start(self):
+    #     if self._pause_event is not None:
+    #         self._pause_event.set()
+    #     super().start()
+    
     # def stop(self):
-    #     if self.live.is_started:                    
-    #         self.refresh()
-    #         super().stop()
+    #     if self._pause_event is not None:
+    #         self._pause_event.clear()
+    #     super().stop()
 
     def pop_task(self, task_id, remove=None):
         """Close a task and return its serialized data."""
@@ -141,6 +158,7 @@ class ProgressProxy(BaseProxy):
     add_task = proxymethod(Progress.add_task)
     remove_task = proxymethod(Progress.remove_task)
     update = proxymethod(Progress.update)
+    update_ = proxymethod(Progress.update_)
     refresh = proxymethod(Progress.refresh)
     start = proxymethod(Progress.start)
     stop = proxymethod(Progress.stop)
@@ -150,6 +168,7 @@ class ProgressProxy(BaseProxy):
     dump_tasks = proxymethod(Progress.dump_tasks)
     load_task = proxymethod(Progress.load_task)
     pop_task = proxymethod(Progress.pop_task)
+    clear = proxymethod(Progress.clear)
 
 ProgressProxy._exposed_ = tuple(k for k, v in ProgressProxy.__dict__.items() if getattr(v, '_is_exposed_', False))
 
@@ -160,9 +179,68 @@ class MqdmManager(SyncManager):
     mqdm_Progress: Type[ProgressProxy]
 MqdmManager.register('mqdm_Progress', Progress, ProgressProxy)
 
+M._manager = None
+M._pause_event = threading.Event()
+M._pause_event.set()
+M._shutdown_event = threading.Event()
+M._shutdown_event.set()
 def get_manager() -> MqdmManager:
-    if getattr(mqdm, '_manager', None) is not None:
-        return mqdm._manager
-    mqdm._manager = manager = MqdmManager()
+    if M._manager is not None:
+        return M._manager
+    M._manager = manager = MqdmManager()
     manager.start()
+    M._pause_event = manager.Event()
+    M._pause_event.set()
+    M._shutdown_event = manager.Event()
+    M._shutdown_event.set()
     return manager
+
+
+def get_progress_instance(pool_mode: T_POOL_MODE=None, *columns, **kw):
+    if pool_mode == 'process':
+        manager = get_manager()
+        return manager.mqdm_Progress(*columns, **kw)
+    return Progress(*columns, **kw)
+
+
+
+# import sys
+# import rich
+# from typing import cast, TextIO, IO, Optional
+# from rich.file_proxy import FileProxy
+# class _RedirectIO:
+#     def __init__(self, console: rich.console.Console, redirect_stdout: bool = True, redirect_stderr: bool = True):
+#         self.console_compatible = console.is_terminal or console.is_jupyter
+#         self._redirect_stdout = redirect_stdout
+#         self._redirect_stderr = redirect_stderr
+#         self._restore_stdout: Optional[IO[str]] = None
+#         self._restore_stderr: Optional[IO[str]] = None
+
+#     def __enter__(self):
+#         self.enable()
+#         return self
+    
+#     def __exit__(self, *exc):
+#         self.disable()
+
+#     def __del__(self):
+#         self.disable()
+
+#     def enable(self) -> None:
+#         """Enable redirecting of stdout / stderr."""
+#         if self.console_compatible:
+#             if self._redirect_stdout and not isinstance(sys.stdout, FileProxy):
+#                 self._restore_stdout = sys.stdout
+#                 sys.stdout = cast("TextIO", FileProxy(self.console, sys.stdout))
+#             if self._redirect_stderr and not isinstance(sys.stderr, FileProxy):
+#                 self._restore_stderr = sys.stderr
+#                 sys.stderr = cast("TextIO", FileProxy(self.console, sys.stderr))
+
+#     def disable(self) -> None:
+#         """Disable redirecting of stdout / stderr."""
+#         if self._restore_stdout:
+#             sys.stdout = cast("TextIO", self._restore_stdout)
+#             self._restore_stdout = None
+#         if self._restore_stderr:
+#             sys.stderr = cast("TextIO", self._restore_stderr)
+#             self._restore_stderr = None

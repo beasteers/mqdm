@@ -1,3 +1,4 @@
+import time
 from contextlib import contextmanager
 
 import rich
@@ -7,9 +8,10 @@ from rich import progress
 import mqdm as M  # self
 from . import proxy
 from . import utils
-from .utils import T_POOL_MODE
-from .utils import args, executor
-from .utils import embed, inp, bp, iex
+# from .executor import SequentialExecutor, ProcessPoolExecutor, ThreadPoolExecutor, Executor
+from .executor import executor, T_POOL_MODE
+from ._dev import embed, inp, bp, iex, profile
+from .utils import args
 
 
 _manager = None
@@ -25,7 +27,8 @@ pbar: 'proxy.Progress|proxy.ProgressProxy' = None
 
 def _new_pbar(pool_mode: T_POOL_MODE=None, bytes=False, **kw):
     kw.setdefault('refresh_per_second', 8)
-    return proxy.get_progress_cls(pool_mode)(
+    return proxy.get_progress_instance(
+        pool_mode,
         "[progress.description]{task.description}",
         progress.BarColumn(bar_width=None),
         "[progress.percentage]{task.percentage:>3.0f}%",
@@ -71,6 +74,8 @@ def _clear_pbar(strict=True, force=False, soft=False):
             M.pbar.refresh()
     else:
         if M.pbar is not None:
+            M.pbar.start()
+            M.pbar.refresh()
             M.pbar.stop()
         M.pbar = None
 
@@ -101,7 +106,7 @@ def print(*args, **kw):
 def get(i=-1):
     """Get an mqdm instance."""
     try:
-        return _instances[i]
+        return list(_instances.values())[i]()
     except IndexError:
         raise IndexError(f'No progress bar found at index {i} in list of length {len(_instances)}')
 
@@ -121,14 +126,42 @@ def update(n=1, i=-1, **kw):
     return get(i).update(n, **kw)
 
 
+
+import weakref
+from collections import OrderedDict
+
+_instances = OrderedDict()
+
 def _add_instance(bar):
     if bar not in _instances:
-        _instances.append(bar)
+        _instances[hash(bar)] = weakref.ref(bar)
     return bar
 
 def _remove_instance(bar):
-    while bar in _instances:
-        _instances.remove(bar)
+    _instances.pop(hash(bar), None)  # Safely remove without error if bar is not found
+
+def _close_instances():
+    for bar_ref in list(_instances.values()):  # Make sure to use list() to avoid modifying while iterating
+        bar = bar_ref()
+        if bar is not None:
+            bar.close()
+    _instances.clear()
+
+import atexit
+atexit.register(_close_instances)
+
+
+def _pause_wait():
+    M._pause_event.wait()
+
+_last_pause_wait_time = 0
+_pause_wait_ttl_seconds = 0.2
+def _ttl_pause_wait(): # lru_cache(1)(_pause_wait)(int(time.time()/ttl))
+    global _last_pause_wait_time
+    current_time = int(time.time() / _pause_wait_ttl_seconds)
+    if current_time != _last_pause_wait_time:
+        _last_pause_wait_time = current_time
+        M._pause_event.wait()
 
 
 def pause(paused=True):
@@ -138,8 +171,10 @@ def pause(paused=True):
         pbar.paused = paused
         if paused:
             pbar.stop()
+            M._pause_event.clear()
         else:
             pbar.start()
+            M._pause_event.set()
     return _pause_exit(prev_paused)
 
 class _pause_exit:

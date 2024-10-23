@@ -8,9 +8,16 @@ from mqdm import mqdm, pool, print
 # ---------------------------------------------------------------------------- #
 
 
+def example_prompt():
+    for i in mqdm(range(10), desc='example', transient=False):
+        time.sleep(0.1)
+        if i == 5:
+            M.inp("Do you want to continue?")
+
+
 def example_group():
     t0 = time.time()
-    for i in range(10):
+    for i in range(5):
         for j in mqdm(range(100), desc=f'blah {i}'):
             time.sleep(0.005)
         print("loop")
@@ -18,14 +25,14 @@ def example_group():
 
     t0 = time.time()
     with M.group():
-        for i in range(10):
+        for i in range(5):
             for j in mqdm(range(100), desc=f'blah {i}'):
                 time.sleep(0.005)
             print("loop")
     print(f"done in {time.time() - t0:.2f} seconds")
 
     t0 = time.time()
-    for i in range(10):
+    for i in range(5):
         for j in mqdm(range(100), desc=f'blah {i}'):
             time.sleep(0.005)
         print("loop")
@@ -50,15 +57,16 @@ def example_bar(n=8, sleep=1, transient=False, error=False, indet=False, embed=F
     print(f"done in {time.time() - t0:.2f} seconds")
 
 
-def example_fn(i, error=False, sleep=1):
+def example_fn(n, error=False, sleep=1):
     import time
     import random
-    for i in mqdm(range(i + 1), desc=f'example {i}'):
+    for i in mqdm(range(n + 1), desc=f'example {n}'):
         t = sleep * random.random()*2 / (i+1)
         time.sleep(t)
         print(i, "slept for", t)
         # mqdm_.set_description("sleeping for %.2f" % t)
         if error: 1/0
+    print("Done", n)
 
 def example_pool(n=5, transient=False, n_workers=5, **kw):
     import time
@@ -71,6 +79,58 @@ def example_pool(n=5, transient=False, n_workers=5, **kw):
         bar_kw={'transient': transient},
         # transient=True,
         n_workers=n_workers,
+        **kw)
+    print("done in", time.time() - t0, "seconds", 123)
+
+
+
+# @M.profile
+def speed_fn(t, N=1000000000):
+    # print("Starting")
+    import time
+    t0 = time.time()
+    for i in mqdm(range(N), desc=M.utils.process_name()):
+        if time.time() - t0 > t:
+            print("break", i)
+            break
+
+# @M.utils.profile
+def example_speed(t=10, n_workers=1, **kw):
+    import time
+    t0 = time.time()
+    pool(
+        speed_fn,
+        # example_bar, 
+        [t]*n_workers, 
+        '[bold blue]Very important work',
+        bar_kw={'transient': False},
+        n_workers=n_workers,
+        squeeze_=False,
+        **kw)
+    print("done in", time.time() - t0, "seconds", 123)
+    time.sleep(2)
+
+
+def tqdm_speed_fn(t, N=1000000000):
+    import tqdm
+    import time
+    t0 = time.time()
+    for i in tqdm.tqdm(range(N)):
+        if time.time() - t0 > t:
+            print("break")
+            break
+
+def example_tqdm_speed(t=10, transient=False, **kw):
+    import time
+    t0 = time.time()
+    pool(
+        tqdm_speed_fn,
+        # example_bar, 
+        [t]*1, 
+        '[bold blue]Very important work',
+        bar_kw={'transient': transient},
+        # transient=True,
+        n_workers=1,
         **kw)
     print("done in", time.time() - t0, "seconds", 123)
 
