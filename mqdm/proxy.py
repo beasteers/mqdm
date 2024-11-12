@@ -1,3 +1,4 @@
+from collections import deque
 import dataclasses
 import threading
 from typing import Type
@@ -7,8 +8,43 @@ from multiprocessing.managers import BaseProxy, SyncManager
 import multiprocessing.managers
 import rich
 from rich import progress
+from rich.progress import TaskID
 from .executor import T_POOL_MODE
 import mqdm as M
+
+
+class Task(progress.Task):
+    @property
+    def speed(self):
+        """Optional[float]: Get the estimated speed in steps per second."""
+        if self.start_time is None:
+            return None
+        with self._lock:
+            progress = self._progress
+            if progress:
+                total_time = progress[-1].timestamp - self.start_time
+            elif self.finished:
+                total_time = self.finished_time
+            else:
+                total_time = self.elapsed
+            return self.completed / total_time if total_time else total_time
+
+            # total_time = progress[-1].timestamp - progress[0].timestamp
+            # if total_time == 0:
+            #     return None
+            # iter_progress = iter(progress)
+            # next(iter_progress)
+            # total_completed = sum(sample.completed for sample in iter_progress)
+            # speed = total_completed / total_time
+            # # if self.id == 0:
+            # #     print(progress)
+            # #     print("speed p", speed, total_completed, total_time)
+            # return speed
+
+    # def reset(self):
+    #     super().reset()
+    #     self._progress.append(progress.ProgressSample(self.start_time, self.completed))
+    #     # self._progress.append(progress.ProgressSample(self.get_time(), self.completed))
 
 
 class Progress(progress.Progress):
@@ -39,16 +75,37 @@ class Progress(progress.Progress):
     
     @wraps(progress.Progress.update)
     def update_(self, task_id, **kw):
-        if 'description' in kw and kw['description'] is None:  # ignore None descriptions
-            kw.pop('description')
         try:
-            return super().update(task_id, **kw)
+            return self.update(task_id, **kw)
         except KeyError as e:
             pass
-    
+
+    def add_task(
+        self,
+        description: str='',
+        start: bool = True,
+        total: float|None = 100.0,
+        completed: int = 0,
+        visible: bool = True,
+        **fields,
+    ) -> progress.TaskID:
+        with self._lock:
+            task = self._new_task(description or '', start, total, completed, visible, **fields)
+            self._tasks[task.id] = task
+        self.refresh()
+        return task.id
+
+    def start_task(self, task_id: progress.TaskID) -> None:
+        with self._lock:
+            self._start_task(self._tasks[task_id])
+
+    # def stop_task(self, task_id):
+    #     return super().stop_task(task_id)
+
     def clear(self):
         """Clear the progress bar."""
-        self._tasks.clear()
+        with self._lock:
+            self._tasks.clear()
     
     # def start(self):
     #     if self._pause_event is not None:
@@ -63,8 +120,8 @@ class Progress(progress.Progress):
     def pop_task(self, task_id, remove=None):
         """Close a task and return its serialized data."""
         try:
-            data = self.dump_task(task_id)
             self.stop_task(task_id)
+            data = self.dump_task(task_id)
             if remove is None:
                 remove = self._tasks[task_id].fields.get('transient', False)
             if remove:
@@ -107,32 +164,73 @@ class Progress(progress.Progress):
 
     def dump_tasks(self):
         with self._lock:
-            return {task_id: self._dump_task(task_id) for task_id in self._tasks}
+            return {task_id: self._dump_task(self._tasks[task_id]) for task_id in self._tasks}
 
     def dump_task(self, task_id):
         with self._lock:
-            return self._dump_task(task_id)
+            return self._dump_task(self._tasks[task_id])
 
-    def _dump_task(self, task_id):
-        task = self._tasks[task_id]
-        task = {k.name: getattr(task, k.name) for k in dataclasses.fields(task) if not k.name.startswith('_')}
-        return task
+    def _dump_task(self, task):
+        d = {k.name: getattr(task, k.name) for k in dataclasses.fields(task) if not k.name.startswith('_')}
+        d['_progress'] = []
+        if task._progress:
+            d['_progress'].append((task._progress[-1].timestamp, sum(s.completed for s in task._progress)))
+        return d
     
-    def _load_task(self, *, start_time=None, stop_time=None, **data):
-        task = progress.Task(_get_time=self.get_time, _lock=self._lock, **data)
+    def _load_task(self, *, start_time=None, stop_time=None, start=True, _progress=None, **data):
+        task = Task(_get_time=self.get_time, _lock=self._lock, **data)
         task.start_time = start_time
         task.stop_time = stop_time
+        start and self._start_task(task)
+        if _progress:
+            task._progress = deque([progress.ProgressSample(*s) for s in _progress], maxlen=1000)
         return task
+    
+    def _start_task(self, task):
+        if task.start_time is None:
+            task.start_time = self.get_time()
+        # if task.start_time is not None and not task._progress:
+        #     task._progress.append(progress.ProgressSample(task.start_time, task.completed))
 
     def load_task(self, task: dict, start=True):
         with self._lock:
-            task = self._load_task(**task)
+            task = self._load_task(start=start, **task)
             self._tasks[task.id] = task
             if task.id >= self._task_index:
                 self._task_index = progress.TaskID(task.id+1)
-        if start:
-            self.start_task(task.id)
+        self.refresh()
 
+    def _new_task(self, 
+                  description: str='',
+                  start: bool = True,
+                  total: float|None = None,
+                  completed: int = 0,
+                  visible: bool = True,
+                  **fields):
+        task = Task(
+            self._task_index,
+            description,
+            total,
+            completed,
+            visible=visible,
+            fields=fields,
+            _get_time=self.get_time,
+            _lock=self._lock,
+        )
+        start and self._start_task(task)
+        # task._progress.append(progress.ProgressSample(task.start_time or self.get_time(), task.completed))
+        self._task_index = progress.TaskID(int(self._task_index) + 1)
+        return task
+
+    def new_task(self,
+                  description: str='',
+                  start: bool = True,
+                  total: float|None = None,
+                  completed: int = 0,
+                  visible: bool = True,
+                  **fields):
+        with self._lock:
+            return self._dump_task(self._new_task(description or '', start, total, completed, visible, **fields))
 
 
 
@@ -167,6 +265,7 @@ class ProgressProxy(BaseProxy):
     dump_task = proxymethod(Progress.dump_task)
     dump_tasks = proxymethod(Progress.dump_tasks)
     load_task = proxymethod(Progress.load_task)
+    new_task = proxymethod(Progress.new_task)
     pop_task = proxymethod(Progress.pop_task)
     clear = proxymethod(Progress.clear)
 

@@ -11,11 +11,12 @@ from . import utils
 # from .executor import SequentialExecutor, ProcessPoolExecutor, ThreadPoolExecutor, Executor
 from .executor import executor, T_POOL_MODE
 from ._dev import embed, inp, bp, iex, profile
-from .utils import args
+from .utils import args, fopen, ratelimit
+M.input = inp
 
 
-_manager = None
-_instances = []
+_manager: 'proxy.MqdmManager' = None
+_instances: 'list[M.mqdm]' = []
 _keep = False
 pbar: 'proxy.Progress|proxy.ProgressProxy' = None
 
@@ -25,7 +26,7 @@ pbar: 'proxy.Progress|proxy.ProgressProxy' = None
 # ---------------------------------------------------------------------------- #
 
 
-def _new_pbar(pool_mode: T_POOL_MODE=None, bytes=False, **kw):
+def _new_pbar(pool_mode: T_POOL_MODE=None, bytes=False, **kw) -> 'proxy.Progress|proxy.ProgressProxy':
     kw.setdefault('refresh_per_second', 8)
     return proxy.get_progress_instance(
         pool_mode,
@@ -41,7 +42,7 @@ def _new_pbar(pool_mode: T_POOL_MODE=None, bytes=False, **kw):
     )
 
 
-def _get_pbar(pool_mode: T_POOL_MODE=None, start=True, **kw):
+def _get_pbar(pool_mode: T_POOL_MODE=None, start=True, **kw) -> 'proxy.Progress|proxy.ProgressProxy':
     # no progress bar yet, create one
     if not M.pbar:
         # print("New progress bar", pool_mode)

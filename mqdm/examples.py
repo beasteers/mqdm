@@ -91,17 +91,17 @@ def speed_fn(t, N=1000000000):
     t0 = time.time()
     for i in mqdm(range(N), desc=M.utils.process_name()):
         if time.time() - t0 > t:
-            print("break", i)
+            # print("break", i)
             break
 
 # @M.utils.profile
-def example_speed(t=10, n_workers=1, **kw):
+def example_speed(t=10, n_workers=1, x=1, **kw):
     import time
     t0 = time.time()
     pool(
         speed_fn,
         # example_bar, 
-        [t]*n_workers, 
+        [t]*n_workers*x, 
         '[bold blue]Very important work',
         bar_kw={'transient': False},
         n_workers=n_workers,

@@ -1,5 +1,8 @@
+import os
+import time
 import multiprocessing as mp
 from rich import progress
+import mqdm as M
 
 # ---------------------------------------------------------------------------- #
 #                                     Utils                                    #
@@ -30,6 +33,10 @@ class args:
     def __init__(self, *a, **kw):
         self.a = a
         self.kw = kw
+
+    def __repr__(self):
+        args=', '.join([f'{x!r}' for x in self.a] + [f'{k}={v!r}' for k, v in self.kw.items()])
+        return f"args({args})"
 
     def __getitem__(self, i):
         return self.a[i] if isinstance(i, int) else self.kw[i]
@@ -89,7 +96,8 @@ class MofNColumn(progress.DownloadColumn):
         super().__init__(**kw)
 
     def render(self, task):
-        if self.bytes:
+        bytes = task.fields.get("bytes", self.bytes)
+        if bytes:
             return super().render(task)
         total = f'{int(task.total):,}' if task.total is not None else "?"
         return progress.Text(
@@ -108,13 +116,14 @@ class SpeedColumn(progress.TransferSpeedColumn):
 
     def render(self, task):
         """Show data transfer speed."""
-        if self.bytes:
+        bytes = task.fields.get("bytes", self.bytes)
+        if bytes:
             return super().render(task)
         speed = task.finished_speed or task.speed
         if speed is None:
-            return progress.Text("", style="progress.data.speed")
+            return progress.Text(f"{speed}", style="progress.data.speed")
         end = '/s'
-        if speed < 1:
+        if 0 < speed < 1:
             speed = 1 / speed
             speed, suffix = time_units(speed)
             end = '/x'
@@ -127,10 +136,10 @@ class SpeedColumn(progress.TransferSpeedColumn):
         return progress.Text(f"{speed/unit:.1f}{suffix}{end}", justify='right', style="progress.data.speed")
 
 def time_units(seconds):
-    for unit in [(60, 's'), (60, 'm'), (24, 'h'), (365, 'd')]:
-        if seconds < unit[0]:
-            return seconds, unit[1]
-        seconds /= unit[0]
+    for d, u in [(60, 's'), (60, 'm'), (24, 'h'), (365, 'd')]:
+        if seconds < d:
+            return seconds, u
+        seconds /= d
     return seconds, 'y'
 
 
@@ -151,9 +160,71 @@ class TimeElapsedColumn(progress.TimeRemainingColumn):
             (f"{hours:d}:" if hours or not self._compact else "") + 
             f"{minutes:02d}:{seconds:02d}", style="progress.elapsed")
 
+
+
 # class LogBarColumn(progress.BarColumn):
 #     def render(self, task):
 #         return progress.Group(
 #             super().render(task),
 #             progress.Text(task.description, style="progress.description"),
 #         )
+
+
+
+class fopen:
+    """Open a file with a progress bar."""
+    def __init__(self, fname: os.PathLike, mode='r', pbar: 'M.mqdm'=None, **kw):
+        self.total = os.path.getsize(fname)
+        self.fd = open(fname, mode)
+        if pbar is None:
+            kw.setdefault('desc', os.path.basename(fname))
+            pbar = M.mqdm(init_kw={'bytes': True}, **kw)
+        self.pbar = pbar
+        self._pbar_managed = not pbar.entered
+        pbar.update(total=self.total)
+        
+    def __enter__(self):
+        self.fd.__enter__()
+        if self._pbar_managed:
+            self.pbar.__enter__()
+        return self
+    
+    def __exit__(self, *args):
+        self.fd.__exit__(*args)
+        if self._pbar_managed:
+            self.pbar.__exit__(*args)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        line = next(self.fd)
+        self.pbar.fast_advance(len(line))
+        return line
+
+    def __getattr__(self, name):
+        return getattr(self.fd, name)
+    
+    def set(self, **kw):
+        self.pbar.set(**kw)
+        return self
+    
+    def set_description(self, desc):
+        self.pbar.set_description(desc)
+        return self
+
+
+def ratelimit(iter, seconds):
+    """Limit the rate of an iterator."""
+    if seconds is None:
+        return iter
+    lag = 0
+    t0 = time.time()
+    for x in iter:
+        yield x
+        t = time.time()
+        dt = seconds - (t - t0) - lag
+        if dt > 0:
+            time.sleep(dt)
+        lag = max(-dt, 0)
+        t0 = t + max(0, dt)

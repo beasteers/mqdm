@@ -48,11 +48,11 @@ def inp(prompt=''):
         return _Prompt.ask(Text(prompt or '', style="dim cyan"))
 
 
-def bp(*a, prompt='ipython?> '):
+def bp(*a, prompt='breakpoint?> '):
     """Breakpoint"""
     with M.pause():
+        a and M.print(*a)
         if not prompt or _Prompt.ask(Text(prompt, style="dim cyan")):
-            a and M.print(*a)
             breakpoint()
 
 
