@@ -39,6 +39,18 @@ mqdm.pool(
 )
 ```
 
+## Pandas
+```python
+import mqdm
+
+df = pd.read_csv('...')
+
+# iterrows is a generator - use total to set the iterator length
+for i, x in mqdm.mqdm(df.iterrows(), total=len(df)):
+    for j in mqdm.mqdm(range(x['N']), disable=x['N'] < 10):  # you can disable the progress bar for quick loops
+        ...
+```
+
 ![alt text](static/image.png)
 
 
