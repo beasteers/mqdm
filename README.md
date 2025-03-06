@@ -39,6 +39,8 @@ mqdm.pool(
 )
 ```
 
+![alt text](static/image.png)
+
 ## Pandas
 ```python
 import mqdm
@@ -50,9 +52,6 @@ for i, x in mqdm.mqdm(df.iterrows(), total=len(df)):
     for j in mqdm.mqdm(range(x['N']), disable=x['N'] < 10):  # you can disable the progress bar for quick loops
         ...
 ```
-
-![alt text](static/image.png)
-
 
 ## Debug utilities
 These are common utilities I use when debugging scripts that require progress bars/multiprocessing.
