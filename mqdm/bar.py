@@ -21,7 +21,7 @@ class mqdm:
             desc (str): The description of the progress bar.
             bytes (bool): Whether to show bytes transferred.
             pbar (rich.progress.Progress): An existing progress bar to use.
-            transient (bool): Whether to remove the progress bar after completion.
+            leave (bool): Whether to keep/remove the progress bar after completion.
             disable (bool): Whether to disable the progress bar.
             **kw: Additional keyword arguments to pass to the progress bar.
         """
@@ -436,6 +436,7 @@ def ipool(
         pool_mode (str, optional): The mode of the pool. Can be 'process', 'thread', 'sequential'. Defaults to 'process'.
         ordered_ (bool, optional): Whether to yield the results in order. Defaults to False for ipool, True for pool.
         squeeze_ (bool, optional): Whether to skip the pool and main progress bar if there is only one item in the iterable. Defaults to True.
+        **kw: Additional keyword arguments to pass to the function.
     """
     # no workers, just run sequentially
     n = utils.try_len(iter, -1)
@@ -574,5 +575,6 @@ def pool(
         squeeze_: bool=True,
         **kw) -> Iterable:
     results_ = [] if results_ is None else results_
-    results_.extend(ipool(fn, iter, desc=desc, bar_kw=bar_kw, n_workers=n_workers, pool_mode=pool_mode, ordered_=ordered_, squeeze_=squeeze_, **kw))
+    for x in ipool(fn, iter, desc=desc, bar_kw=bar_kw, n_workers=n_workers, pool_mode=pool_mode, ordered_=ordered_, squeeze_=squeeze_, **kw):
+        results_.append(x)
     return results_

@@ -3,8 +3,6 @@ from typing import Literal
 from concurrent.futures._base import FINISHED, RUNNING
 from concurrent.futures import Future, Executor, ThreadPoolExecutor, ProcessPoolExecutor
 from concurrent.futures._base import LOGGER
-# from concurrent.futures.process import _sendback_result
-from concurrent.futures.process import _ResultItem, _ExceptionWithTraceback
 from concurrent.futures.process import _RemoteTraceback  # used in bar.py
 import mqdm as M
 
@@ -15,6 +13,8 @@ import mqdm as M
 # At some point we can remove this monkey patch if we drop support for older Python versions.
 # ---------------------------------------------------------------------------- #
 
+# from concurrent.futures.process import _sendback_result
+from concurrent.futures.process import _ResultItem, _ExceptionWithTraceback
 class _ResultItem(_ResultItem):
     def __init__(self, work_id, exception=None, result=None, exit_pid=None):
         self.work_id = work_id
@@ -158,21 +158,31 @@ POOL_EXECUTORS = {
 
 def executor(pool_mode: T_POOL_MODE='process', bar_kw: dict=None, **kw) -> Executor:
     """Return the appropriate executor for the pool mode of the progress bar."""
-    pbar = M._get_pbar(pool_mode=pool_mode)
-    M._pause_event.set()
-    M._shutdown_event.set()
-    return POOL_EXECUTORS[pool_mode](initializer=_pbar_initializer, initargs=[
-        pool_mode, pbar, M._pause_event, M._shutdown_event, bar_kw or {}], **kw)
+    return POOL_EXECUTORS[pool_mode](initializer=Initializer(pool_mode, bar_kw), **kw)
 
 import threading
 _thread_local_data = threading.local()
-def _pbar_initializer(pool_mode, pbar, event, shutdown_event, defaults=None):
+def pbar_initializer(pbar, event, shutdown_event, defaults=None):
     """Initialize the progress bar for the worker thread/process."""
     M.pbar = pbar
     M._pause_event = event
     M._shutdown_event = shutdown_event
-    _thread_local_data.defaults = defaults or {}
+    _thread_local_data.defaults = defaults if defaults is not None else {}
 
 def _get_local(key, default=None):
     """Get a thread-local variable."""
     return getattr(_thread_local_data, key, default)
+
+
+class Initializer:
+    def __init__(self, pool_mode: T_POOL_MODE='process', defaults: dict=None):
+        self.pool_mode = pool_mode
+        self.pbar = M._get_pbar(pool_mode=pool_mode)
+        self.pause_event = M._pause_event
+        self.shutdown_event = M._shutdown_event
+        self.defaults = defaults if defaults is not None else {}
+        self.pause_event.set()
+        self.shutdown_event.set()
+
+    def __call__(self):
+        return pbar_initializer(self.pbar, self.pause_event, self.shutdown_event, self.defaults)

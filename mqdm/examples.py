@@ -77,11 +77,68 @@ def example_pool(n=5, transient=False, n_workers=5, **kw):
         range(n), 
         '[bold blue]Very important work',
         bar_kw={'transient': transient},
-        # transient=True,
         n_workers=n_workers,
         **kw)
     print("done in", time.time() - t0, "seconds", 123)
 
+def example_cf_pool(n=5, transient=False, n_workers=5, **kw):
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+    import time
+    t0 = time.time()
+
+    it = range(n)
+    with ProcessPoolExecutor(max_workers=n_workers, initializer=M.Initializer("process")) as executor, \
+         mqdm(desc='[bold blue]Very important work', total=len(it), transient=transient) as pbar:
+        futures = {executor.submit(example_fn, i, **kw): i for i in it}
+        for future in as_completed(futures):
+            result = future.result()
+            pbar.update(1)
+    print("done in", time.time() - t0, "seconds", 123)
+
+def example_mp_pool(n=5, transient=False, n_workers=5, **kw):
+    from multiprocessing import Pool
+    import time
+    t0 = time.time()
+
+    it = range(n)
+    with Pool(processes=n_workers, initializer=M.Initializer("process")) as executor, \
+         mqdm(desc='[bold blue]Very important work', total=len(it), transient=transient) as pbar:
+        for _ in executor.imap_unordered(example_fn, it):
+            pbar.update(1)
+    print("done in", time.time() - t0, "seconds", 123)
+
+def example_cf_thread_pool(n=5, transient=False, n_workers=5, **kw):
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import time
+    t0 = time.time()
+
+    it = range(n)
+    with ThreadPoolExecutor(max_workers=n_workers) as executor, \
+         mqdm(desc='[bold blue]Very important work', total=len(it), transient=transient) as pbar:
+        futures = {executor.submit(example_fn, i, **kw): i for i in it}
+        for future in as_completed(futures):
+            result = future.result()
+            pbar.update(1)
+    print("done in", time.time() - t0, "seconds", 123)
+
+def example_thread_pool(n=5, transient=False, n_workers=5, **kw):
+    from threading import Thread
+    import time
+    t0 = time.time()
+
+    it = range(n)
+    with mqdm(desc='[bold blue]Very important work', total=len(it), transient=transient) as pbar:
+        threads = []
+        def worker(i):
+            example_fn(i, **kw)
+            pbar.update(1)
+        for i in it:
+            t = Thread(target=worker, args=(i,))
+            t.start()
+            threads.append(t)
+        for t in threads:
+            t.join()
+    print("done in", time.time() - t0, "seconds", 123)
 
 
 # @M.profile
