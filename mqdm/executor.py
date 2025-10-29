@@ -2,13 +2,18 @@ import os
 from typing import Literal
 from concurrent.futures._base import FINISHED, RUNNING
 from concurrent.futures import Future, Executor, ThreadPoolExecutor, ProcessPoolExecutor
-from concurrent.futures.process import (
-    _base, 
-    _sendback_result, 
-    _ResultItem,
-    _ExceptionWithTraceback)
+from concurrent.futures._base import LOGGER
+# from concurrent.futures.process import _sendback_result
+from concurrent.futures.process import _ResultItem, _ExceptionWithTraceback
+from concurrent.futures.process import _RemoteTraceback  # used in bar.py
 import mqdm as M
 
+
+# ---------------------------------------------------------------------------- #
+#                                 Monkey Patch                                 #
+# At some point, _max_tasks_per_child and exit_pid were added to ProcessPoolExecutor.
+# At some point we can remove this monkey patch if we drop support for older Python versions.
+# ---------------------------------------------------------------------------- #
 
 class _ResultItem(_ResultItem):
     def __init__(self, work_id, exception=None, result=None, exit_pid=None):
@@ -17,22 +22,21 @@ class _ResultItem(_ResultItem):
         self.result = result
         self.exit_pid = exit_pid
 
-def _sendback_result(result_queue, work_id, result=None, exception=None,
-                     exit_pid=None):
+
+def _sendback_result(result_queue, work_id, result=None, exception=None, exit_pid=None):
     try:
-        result_queue.put(_ResultItem(work_id, result=result,
-                                     exception=exception, exit_pid=exit_pid))
+        result_queue.put(_ResultItem(work_id, result=result, exception=exception, exit_pid=exit_pid))
     except BaseException as e:
         exc = _ExceptionWithTraceback(e, e.__traceback__)
-        result_queue.put(_ResultItem(work_id, exception=exc,
-                                     exit_pid=exit_pid))
+        result_queue.put(_ResultItem(work_id, exception=exc, exit_pid=exit_pid))
+
 
 def _process_worker(call_queue, result_queue, initializer, initargs, max_tasks=None):
     if initializer is not None:
         try:
             initializer(*initargs)
         except BaseException:
-            _base.LOGGER.critical('Exception in initializer:', exc_info=True)
+            LOGGER.critical('Exception in initializer:', exc_info=True)
             return
     num_tasks = 0
     exit_pid = None
@@ -50,19 +54,15 @@ def _process_worker(call_queue, result_queue, initializer, initargs, max_tasks=N
 
         try:
             r = call_item.fn(*call_item.args, **call_item.kwargs)
-            # M._close_instances()
-        except KeyboardInterrupt as e:  # +++ Added this so KeyboardInterrupts stop the worker
+        except KeyboardInterrupt as e:  # +++++ Added: ensure KeyboardInterrupt stops the worker
             exc = _ExceptionWithTraceback(e, e.__traceback__)
-            _sendback_result(result_queue, call_item.work_id, exception=exc,
-                             exit_pid=os.getpid())
+            _sendback_result(result_queue, call_item.work_id, exception=exc, exit_pid=os.getpid())
             return
         except BaseException as e:
             exc = _ExceptionWithTraceback(e, e.__traceback__)
-            _sendback_result(result_queue, call_item.work_id, exception=exc,
-                             exit_pid=exit_pid)
+            _sendback_result(result_queue, call_item.work_id, exception=exc, exit_pid=exit_pid)
         else:
-            _sendback_result(result_queue, call_item.work_id, result=r,
-                             exit_pid=exit_pid)
+            _sendback_result(result_queue, call_item.work_id, result=r, exit_pid=exit_pid)
             del r
 
         del call_item
@@ -72,15 +72,19 @@ def _process_worker(call_queue, result_queue, initializer, initargs, max_tasks=N
 
 
 class ProcessPoolExecutor(ProcessPoolExecutor):
-    _max_tasks_per_child = None
+    _max_tasks_per_child = None  # specific python version compatibility (?)
+
     def _spawn_process(self):
         p = self._mp_context.Process(
             target=_process_worker,
-            args=(self._call_queue,
-                  self._result_queue,
-                  self._initializer,
-                  self._initargs,
-                  self._max_tasks_per_child))
+            args=(
+                self._call_queue,
+                self._result_queue,
+                self._initializer,
+                self._initargs,
+                self._max_tasks_per_child,
+            ),
+        )
         p.start()
         self._processes[p.pid] = p
 
@@ -157,12 +161,12 @@ def executor(pool_mode: T_POOL_MODE='process', bar_kw: dict=None, **kw) -> Execu
     pbar = M._get_pbar(pool_mode=pool_mode)
     M._pause_event.set()
     M._shutdown_event.set()
-    return POOL_EXECUTORS[pool_mode](initializer=pbar_initializer, initargs=[
+    return POOL_EXECUTORS[pool_mode](initializer=_pbar_initializer, initargs=[
         pool_mode, pbar, M._pause_event, M._shutdown_event, bar_kw or {}], **kw)
 
 import threading
 _thread_local_data = threading.local()
-def pbar_initializer(pool_mode, pbar, event, shutdown_event, defaults=None):
+def _pbar_initializer(pool_mode, pbar, event, shutdown_event, defaults=None):
     """Initialize the progress bar for the worker thread/process."""
     M.pbar = pbar
     M._pause_event = event

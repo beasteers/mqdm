@@ -1,6 +1,7 @@
 import sys
 import time
 import functools
+from types import TracebackType
 import rich
 from rich.prompt import Prompt
 from rich.console import Text
@@ -57,35 +58,52 @@ def bp(*a, prompt='breakpoint?> '):
             breakpoint()
 
 
-def iex(func):
-    """Decorator to embed an IPython shell in the current environment when an exception is raised. This makes sure the progress bars don't interfere.
-    
-    This lets you do post-mortem debugging of the Exception stack trace.
+def pdb():
+    try:
+        import pdbr as pdb
+    except ImportError:
+        try:
+            import ipdb as pdb
+        except ImportError:
+            import pdb
+    return pdb
 
+
+def post_mortem(tb: TracebackType):
+    def _print_exc():
+        import fnmatch
+        rich.console.Console().print_exception(
+            suppress=[m for k, m in sys.modules.items() if any(
+                fnmatch.fnmatch(k, p) for p in ['fire', 'concurrent.futures', 'threading', 'multiprocessing'])]
+        )
+        cmds = 'h: help, u: up, d: down, l: code, v: vars, vt: varstree, w: stack, i {var}: inspect'
+        rich.print("\n[bold dim]Commands - [/bold dim] " + ", ".join(
+            "[bold green]{}[/bold green]:[dim]{}[/dim]".format(*c.split(':')) for c in cmds.split(', ')
+        ))
+
+    if tb is not None:
+        M.pause(True)
+        _print_exc()
+        pdb().post_mortem(tb)
+        M.pause(False)
+
+
+def iex(func):
+    """Decorator to embed an interactive post-mortem debugger on exception.
+
+    Tries to use `pdbr` if installed; otherwise, prints a rich traceback and re-raises.
     Does not work in subprocesses for obvious reasons.
     """
-    import functools, fnmatch
-    from pdbr import pdbr_context
-    # from ipdb import iex
-    @pdbr_context()
-    def inner(*a, **kw):
+    import functools
+    @functools.wraps(func)
+    def outer(*a, **kw):
         _rich_traceback_omit = True
         try:
             return func(*a, **kw)
-        except:
-            M.pause(True)
-            rich.console.Console().print_exception(suppress=[m for k, m in sys.modules.items() if any(
-                fnmatch.fnmatch(k, p) for p in ['fire', 'concurrent.futures', 'threading', 'multiprocessing'])])
-            cmds='h: help, u: up, d: down, l: code, v: vars, vt: varstree, w: stack, i {var}: inspect'
-            rich.print("\n[bold dim]Commands - [/bold dim] " + ", ".join("[bold green]{}[/bold green]:[dim]{}[/dim]".format(*c.split(':')) for c in cmds.split(', ')))
-            raise
-    @functools.wraps(func)
-    def outer(*a, **kw):
-        try:
-            return inner(*a, **kw)
-        finally:
-            M.pause(False)
+        except BaseException as e:
+            post_mortem(getattr(e, '__traceback__', None))
     return outer
+
 
 def profile(func=None, **pkw):
     """Decorator to profile a function using pyinstrument."""
