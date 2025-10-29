@@ -5,11 +5,9 @@ from functools import wraps
 import traceback
 from typing import Callable, Iterable, Literal
 from concurrent.futures import as_completed
-from concurrent.futures.process import _RemoteTraceback
-
 from . import print, T_POOL_MODE, _ttl_pause_wait
 from . import utils
-from .executor import _get_local
+from .executor import _get_local, _RemoteTraceback
 import mqdm as M
 
 T_DESC_FUNC = Callable[[M.args, int], str]
@@ -42,12 +40,12 @@ class mqdm:
 
     def __init__(
             self, 
-            iter=None, desc=None, *, 
+            it=None, desc=None, *, 
 
             # mqdm arguments
             pool_mode=None, 
             disable=None, 
-            miniters=None, 
+            # miniters=None, 
             fast_fps_delta=0.05, 
             task_id=None, 
 
@@ -73,14 +71,14 @@ class mqdm:
             **fields,
         ):
         if isinstance(iter, str) and desc is None:  # infer string as description
-            iter, desc = None, iter
+            it, desc = None, it
 
         # if disable is not None:
         #     self.disable = disable
         if disable is None:
             disable = self.disable
         self.disable = disable
-        self.miniters = miniters
+        # self.miniters = miniters
         self.fast_advance = _speed_increment(delta=fast_fps_delta, disable=disable)
 
         self._progress_kw = {
@@ -139,7 +137,7 @@ class mqdm:
         self.started = start
 
         # if we have an iterable, start the progress bar
-        self(iter, desc=..., **kw)
+        self(it, desc=..., **kw)
 
     # ------------------------------ Dunder methods ------------------------------ #
 
@@ -176,11 +174,11 @@ class mqdm:
         self.entered = True
         return self.open()
 
-    def __exit__(self, c,v,t):
+    def __exit__(self, t, e, tb):
         self.entered = False
         self.close()
         pbar = M.pbar
-        if isinstance(v, KeyboardInterrupt) and pbar is not None:
+        if isinstance(e, KeyboardInterrupt) and pbar is not None:
             pbar.stop()
 
     def __del__(self):
@@ -307,12 +305,12 @@ class mqdm:
         self.set(completed=n)
 
     @property
-    def total(self) -> int:
+    def total(self) -> int|None:
         """The total number of items to iterate over."""
         return self._total
     
     @total.setter
-    def total(self, total: int):
+    def total(self, total: int|None):
         """Set the total number of items to iterate over."""
         self.set(total=total)
 
@@ -420,7 +418,7 @@ def ipool(
         fn: Callable, 
         iter: Iterable, 
         desc: str|T_DESC_FUNC='', 
-        bar_kw: dict={}, 
+        bar_kw: dict|None=None, 
         n_workers: int=8, 
         pool_mode: T_POOL_MODE='process', 
         ordered_: bool=False, 
@@ -495,12 +493,13 @@ def ipool(
                                 _append_remote_exception(remote_exceptions, e, fn, f.arg)
                 except KeyboardInterrupt:
                     M.pause()
-                    try:
-                        for pid, process in executor._processes.items():
-                            print(f"Killing process {pid}...")
-                            process.kill()
-                    except Exception as e:
-                        M.print(f"Error killing processes: {e}")
+                    if pool_mode == 'process':
+                        try:
+                            for pid, process in getattr(executor, '_processes', {}).items():
+                                print(f"Killing process {pid}...")
+                                process.kill()
+                        except Exception as e:
+                            M.print(f"Error killing processes: {e}")
                     executor.shutdown(wait=False, cancel_futures=True)
                     raise
 
@@ -567,7 +566,7 @@ def pool(
         fn: Callable, 
         iter: Iterable, 
         desc: str|T_DESC_FUNC='', 
-        bar_kw: dict={}, 
+        bar_kw: dict|None=None, 
         n_workers: int=8, 
         pool_mode: T_POOL_MODE='process', 
         results_: list=None,
