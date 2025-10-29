@@ -182,3 +182,26 @@ def example_messy(n=3, transient=False, n_workers=5, **kw):
 
     # example_bar(2, transient=False)
     # M.pbar.stop()
+
+
+def main():
+    example_prompt()
+    example_group()
+    example_bar(n=8, sleep=0.1, transient=False)
+    example_bar(n=8, sleep=0.1, transient=True)
+    try:
+        example_bar(n=8, sleep=0.1, transient=False, error=True)
+    except ZeroDivisionError:
+        pass
+    example_pool(n=3, transient=False, n_workers=2)
+    example_pool(n=3, transient=True, n_workers=2)
+    example_speed(t=5, n_workers=2, x=2)
+    example_tqdm_speed(t=5, transient=False)
+    example_tqdm_speed(t=5, transient=True)
+    example_messy(n=3, transient=False, n_workers=2)
+
+
+if __name__ == '__main__':
+    all = main
+    import fire
+    fire.Fire()
