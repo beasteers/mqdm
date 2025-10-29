@@ -1,4 +1,5 @@
 import sys
+import time
 import functools
 import rich
 from rich.prompt import Prompt
@@ -86,16 +87,32 @@ def iex(func):
             M.pause(False)
     return outer
 
-def profile(func):
+def profile(func=None, **pkw):
     """Decorator to profile a function using pyinstrument."""
+    profiler_kw = {k: pkw.pop(k) for k in ['interval', 'use_timing_thread', 'async_mode'] if k in pkw}
+    def wrapper(func):
+        @functools.wraps(func)
+        def outer(*a, **kw):
+            import pyinstrument
+            p = pyinstrument.Profiler(**(profiler_kw or {}))
+            try:
+                with p:
+                    return func(*a, **kw)
+            finally:
+                M.pause(True)
+                pkw.setdefault('color', True)
+                p.print(**pkw)
+        return outer
+    return wrapper(func) if func is not None else wrapper
+
+
+def timeit(func=None, **pkw):
     @functools.wraps(func)
-    def outer(*a, **kw):
-        import pyinstrument
-        p = pyinstrument.Profiler()
+    def wrapper(*a, **kw):
+        start = time.perf_counter()
         try:
-            with p:
-                return func(*a, **kw)
+            return func(*a, **kw)
         finally:
-            M.pause(True)
-            p.print(color=True)
-    return outer
+            end = time.perf_counter()
+            print(f"Function {func.__name__} took {end - start:.4f} seconds")
+    return wrapper

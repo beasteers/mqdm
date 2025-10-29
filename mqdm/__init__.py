@@ -10,7 +10,7 @@ from . import proxy
 from . import utils
 # from .executor import SequentialExecutor, ProcessPoolExecutor, ThreadPoolExecutor, Executor
 from .executor import executor, T_POOL_MODE
-from ._dev import embed, inp, bp, iex, profile
+from ._dev import embed, inp, bp, iex, profile, timeit
 from .utils import args, fopen, ratelimit
 M.input = inp
 

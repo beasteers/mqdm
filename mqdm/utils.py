@@ -30,34 +30,36 @@ class args:
         arg(fn, b=2)
     ```
     '''
-    def __init__(self, *a, **kw):
+    def __init__(self, *a, _MQDM_PARENT_ARGS_OBJ_=None, **kw):
+        if _MQDM_PARENT_ARGS_OBJ_ is not None:
+            a = _MQDM_PARENT_ARGS_OBJ_.a + a
+            kw = {**_MQDM_PARENT_ARGS_OBJ_.kw, **kw}
+
         self.a = a
         self.kw = kw
 
     def __repr__(self):
-        args=', '.join([f'{x!r}' for x in self.a] + [f'{k}={v!r}' for k, v in self.kw.items()])
-        return f"args({args})"
+        args=', '.join([f'\n  {x!r}' for x in self.a] + [f'\n  {k}={v!r}' for k, v in self.kw.items()])
+        args = args + '\n' if args else ''
+        return f"({args})"
 
     def __getitem__(self, i):
         return self.a[i] if isinstance(i, int) else self.kw[i]
 
     def __call__(self, fn, *a, **kw):
-        return fn(*self.a, *a, **dict(self.kw, **kw)) if callable(fn) else fn
-    
-    @classmethod
-    def call(cls, fn, x, *a, **kw):
-        return cls.from_item(x)(fn, *a, **kw)
-    
+        return fn(*self.a, *a, **dict(self.kw, **kw))
+
     @classmethod
     def from_item(cls, x, *a, **kw):
-        return x.merge_general(*a, **kw) if isinstance(x, cls) else cls(x, *a, **kw)
+        return cls(*a, _MQDM_PARENT_ARGS_OBJ_=x, **kw) if isinstance(x, cls) else cls(x, *a, **kw)
 
     @classmethod
     def from_items(cls, items, *a, **kw):
         return [cls.from_item(x, *a, **kw) for x in items]
-
-    def merge_general(self, *a, **kw):
-        return args(*self.a, *a, **dict(kw, **self.kw))
+    
+    @classmethod
+    def from_tuples(cls, items, *a, **kw):
+        return [cls.from_item(*x, *a, **kw) for x in items]
 
 
 def maybe_call(fn, *a, **kw):

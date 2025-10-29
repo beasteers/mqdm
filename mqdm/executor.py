@@ -96,6 +96,7 @@ class SequentialFuture(Future):
         self._args = args
         self._kwargs = kwargs
         self._evaluated = False
+        self._processes = {}
         with self._condition:  # so as_completed will return it
             self._state = FINISHED
 

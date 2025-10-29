@@ -25,10 +25,12 @@ for x in mqdm.mqdm(items):
 ```python
 import mqdm
 import time
+from mqdm import print  # this will direct the print to the main process so it doesn't break the progress bars. 
 
 def my_work(n, sleep, mqdm: mqdm.Bar):
     for i in mqdm(range(n), description=f'counting to {n}'):
         time.sleep(sleep)
+        print("asdfsadf")
 
 # executes my task in a concurrent futures process pool
 mqdm.pool(

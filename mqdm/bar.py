@@ -2,14 +2,17 @@
 import time
 import sys
 from functools import wraps
-from typing import Callable, Iterable
+import traceback
+from typing import Callable, Iterable, Literal
 from concurrent.futures import as_completed
+from concurrent.futures.process import _RemoteTraceback
 
-from . import print, T_POOL_MODE
+from . import print, T_POOL_MODE, _ttl_pause_wait
 from . import utils
 from .executor import _get_local
 import mqdm as M
 
+T_DESC_FUNC = Callable[[M.args, int], str]
 
 
 class mqdm:
@@ -31,10 +34,11 @@ class mqdm:
     _n = 0                   # the number of items completed
     _iter = None             # the item iterator
     # _items = None            # the items of the iterator (for indexing)
-    entered = False         # whether the progress bar has called __enter__()
-    started = False         # whether the progress bar has beed started (for lazy start)
+    entered = False          # whether the progress bar has called __enter__()
+    started = False          # whether the progress bar has beed started (for lazy start)
     _task_dict = None        # the dumped task
     get_desc = None          # a function to get the description
+    disable = False          # whether to disable the progress bar
 
     def __init__(
             self, 
@@ -42,9 +46,9 @@ class mqdm:
 
             # mqdm arguments
             pool_mode=None, 
-            disable=False, 
+            disable=None, 
             miniters=None, 
-            fast_fps_delta=0.01, 
+            fast_fps_delta=0.05, 
             task_id=None, 
 
             # progress bar arguments
@@ -71,6 +75,10 @@ class mqdm:
         if isinstance(iter, str) and desc is None:  # infer string as description
             iter, desc = None, iter
 
+        # if disable is not None:
+        #     self.disable = disable
+        if disable is None:
+            disable = self.disable
         self.disable = disable
         self.miniters = miniters
         self.fast_advance = _speed_increment(delta=fast_fps_delta, disable=disable)
@@ -188,15 +196,24 @@ class mqdm:
     def _get_iter(self, iter, **kw):
         i = x = ...
         try:
-            for i, x in enumerate(iter):
-                M._ttl_pause_wait()
-                self._n += 1
-                self.fast_advance(i>0, arg=x, i=i)
-                yield x
+            fast_advance = self.fast_advance
+            it = enumerate(iter)
+            i, x = next(it)
+            _ttl_pause_wait()
             self._n += 1
-            self.fast_advance(1, flush=True)
+            fast_advance(0, arg=x, i=i, flush=True)
+            yield x
+            for i, x in it:
+                _ttl_pause_wait()
+                self._n += 1
+                fast_advance(1, arg=x, i=i)
+                yield x
+            # self._n += 1
+            fast_advance(1, flush=True)
+        except StopIteration:
+            pass
         finally:
-            self.fast_advance(0, arg=x, i=i, flush=True)
+            fast_advance(0, flush=True)
 
     def __call__(self, iter, desc=None, total=None, **kw) -> 'mqdm':
         """Iterate over an iterable with a progress bar."""
@@ -341,10 +358,11 @@ class _speed_increment:
     """Increment the progress bar in a very fast loop.
     Saves time by reducing inter-process IO.
     """
-    __slots__ = ('n', 't', 'disable', 'delta', 'get_desc', 'task_id')
+    __slots__ = ('n', 'nc', 't', 'disable', 'delta', 'get_desc', 'task_id')
     def __init__(self, delta=0, disable=False):
         self.delta = delta
         self.n = self.t = 0
+        self.nc = ...
         self.get_desc = None
         self.task_id = None
         self.disable = disable
@@ -352,9 +370,14 @@ class _speed_increment:
     def flush(self):
         return self(0, flush=True)
 
-    def __call__(self, n: int=1, arg=..., i=..., flush=False):
+    def __call__(self, n: int=1, completed: int=..., arg=..., i=..., flush=False):
         if self.disable:
             return
+        
+        if completed is not ...:
+            self.nc = completed
+            self.n = n = 0
+
         delta = self.delta
         if delta:
             # If the time since the last increment is less than some delta, increment a local counter
@@ -364,47 +387,52 @@ class _speed_increment:
             t = time.time()
             last_t = self.t
             n0 = self.n
-            if t - last_t < delta and not flush:
-                self.n = n + n0
-                return
             n += n0
+            if t - last_t < delta and not flush:
+                self.n = n
+                return
 
         pbar = M.pbar
         if pbar is None:
             return
-
+        
+        kw = {}
         if i is not ...:
             get_desc = self.get_desc
             if get_desc is not None:
                 desc = get_desc(arg, i)
                 if desc is not None:
-                    pbar.update(self.task_id, advance=n, description=desc)
-                    return
-        if n:
-            pbar.update(self.task_id, advance=n)
+                    kw['description'] = desc
+
+        if self.nc is not ...:
+            pbar.update(self.task_id, completed=self.nc + n, **kw)
+        elif n:
+            pbar.update(self.task_id, advance=n, **kw)
 
         if delta:
-            if n0:
-                self.n = 0
+            # if n0:
+            self.n = 0
+            self.nc = ...
             self.t = t
 
 
 def ipool(
         fn: Callable, 
         iter: Iterable, 
-        desc: str='', 
+        desc: str|T_DESC_FUNC='', 
         bar_kw: dict={}, 
         n_workers: int=8, 
         pool_mode: T_POOL_MODE='process', 
         ordered_: bool=False, 
         squeeze_: bool=True,
+        on_error: Literal['finish', 'cancel', 'skip']='cancel',
         **kw) -> Iterable:
     """Execute a function in a process pool with a progress bar for each task.
 
     Args:
         fn (Callable): The function to execute.
         iter (Iterable): The iterable to iterate over.
-        desc (str, optional): The description of the main progress bar. 
+        desc (str|T_DESC_FUNC, optional): The description of the main progress bar. 
         bar_kw (dict, optional): Additional keyword arguments for the sub progress bars.
         n_workers (int, optional): The number of workers in the pool. Defaults to 8.
         pool_mode (str, optional): The mode of the pool. Can be 'process', 'thread', 'sequential'. Defaults to 'process'.
@@ -427,6 +455,7 @@ def ipool(
         return
 
     bar_kw = bar_kw or {}
+    remote_exceptions = {}
     try:
         # initialize progress bars and run the tasks in a process/thread pool
         with mqdm(desc=desc, elapsed_speed=True, **bar_kw) as pbars:
@@ -434,30 +463,110 @@ def ipool(
                 try:
                     futures = []
                     for arg in iter:
+                        arg_i = utils.args.from_item(arg)
                         arg = utils.args.from_item(arg, **kw)
-                        futures.append(executor.submit(fn, *arg.a, **arg.kw))
+                        f = executor.submit(fn, *arg.a, **arg.kw)
+                        futures.append(f)
+                        f.arg = arg_i
                         pbars.set(append_total=1)
 
                     # get function results
-                    for f in futures if ordered_ else as_completed(futures):
-                        x = f.result()
-                        pbars.update()
-                        yield x
+                    for i, f in enumerate(futures if ordered_ else as_completed(futures)):
+                        try:
+                            x = f.result()
+                            pbars.update(arg=f.arg, i=i)
+                            yield x
+                        except Exception as e:
+                            pbars.update(arg=f.arg, i=i)
+                            if on_error == 'skip':
+                                _add_func_args_str_to_exception(e, fn, f.arg)
+                                M.print(traceback.format_exc())
+                            elif on_error == 'cancel':
+                                _add_func_args_str_to_exception(e, fn, f.arg)
+                                for future in futures:
+                                    if not future.done():
+                                        future.cancel()
+                                executor.shutdown(wait=False, cancel_futures=True)
+                                raise
+                            else:
+                                # XXX: this will swallow return values for anything after the error
+                                # M.print(traceback.format_exc())
+                                # raise
+                                _append_remote_exception(remote_exceptions, e, fn, f.arg)
                 except KeyboardInterrupt:
                     M.pause()
-                    executor.shutdown(cancel_futures=True)
+                    try:
+                        for pid, process in executor._processes.items():
+                            print(f"Killing process {pid}...")
+                            process.kill()
+                    except Exception as e:
+                        M.print(f"Error killing processes: {e}")
+                    executor.shutdown(wait=False, cancel_futures=True)
                     raise
+
     except:
         # pause the progress bar so it doesn't interfere with the traceback
         M.pause()
         raise
+
+    if remote_exceptions:
+        raise _combine_remote_exceptions(remote_exceptions)
+
+
+def _add_func_args_str_to_exception(e, fn, arg):
+    """Add the function name and arguments to the exception."""
+    cause = getattr(e, '__cause__', None)
+    if cause is not None:
+        if getattr(cause, 'tb', None) is not None:
+            cause.tb = f"{cause.tb}\n\nError Thrown in Remote Function: {fn.__name__}{arg}"
+    return e
+
+
+def _append_remote_exception(excs, e, fn, arg):
+    tb = getattr(getattr(e, '__cause__', None), 'tb', None)
+    if tb is not None and isinstance(tb, str):
+        k = (e.__class__, str(e), tb)
+        if k not in excs:
+            excs[k] = []
+        excs[k].append(f"{fn.__name__}{arg}")
+    return excs
+
+def _combine_remote_exceptions(excs, n_fn_limit=10, n_tb_limit=10):
+    """Merge the exception arguments into a single string."""
+
+    # TODO: turn this into a class
+    # TODO: use type from returned exception (for isinstance) if there is only one type of exception
+    # TODO: store fn and args in the exception somewhere
+
+    merged = []
+    n_fns = sum(len(args) for args in excs.values())
+    for (t, st, tb), args in sorted(excs.items(), key=lambda x: len(x[0]), reverse=True)[:n_tb_limit]:
+        arg_str = '\n'.join(args[:n_fn_limit])
+        merged.append(f"{tb}\n Seen in {len(args)} Remote Function(s): \n{arg_str}")
+        if len(args) > n_fn_limit:
+            merged.append(f"... and {len(args) - n_fn_limit} more.")
+
+    if len(excs) > n_tb_limit:
+        merged.append(f"... and {len(excs) - n_tb_limit} more exceptions.")
+
+    if len(excs) == 1:
+        (t, st, tb), args = next(iter(excs.items()))
+        msg = f"{st} -- observed in {n_fns} remote function calls."
+        cls = t
+    else:
+        msg = f"{len(excs)} distinct exceptions observed in {n_fns} remote function calls."
+        cls = RuntimeError
+
+    e = cls(msg)
+    e.__cause__ = _RemoteTraceback("\n".join(merged))
+    return e
 
 
 @wraps(ipool, ['__doc__'])
 def pool(
         fn: Callable, 
         iter: Iterable, 
-        desc: str='', 
+        desc: str|T_DESC_FUNC='', 
         bar_kw: dict={}, 
         n_workers: int=8, 
         pool_mode: T_POOL_MODE='process', 
