@@ -294,6 +294,20 @@ def get_manager() -> MqdmManager:
     M._shutdown_event.set()
     return manager
 
+import atexit
+
+def _shutdown_manager():
+    try:
+        manager = getattr(M, '_manager', None)
+        if manager is not None:
+            manager.shutdown()
+            M._manager = None
+    except Exception:
+        # Best-effort shutdown; ignore errors at interpreter teardown
+        pass
+
+atexit.register(_shutdown_manager)
+
 
 def get_progress_instance(pool_mode: T_POOL_MODE=None, *columns, **kw):
     if pool_mode == 'process':
