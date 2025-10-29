@@ -27,8 +27,8 @@ import mqdm
 import time
 from mqdm import print  # this will direct the print to the main process so it doesn't break the progress bars. 
 
-def my_work(n, sleep, mqdm: mqdm.Bar):
-    for i in mqdm(range(n), description=f'counting to {n}'):
+def my_work(n, sleep):
+    for i in mqdm.mqdm(range(n), description=f'counting to {n}'):
         time.sleep(sleep)
         print("asdfsadf")
 
@@ -43,49 +43,45 @@ mqdm.pool(
 
 ![alt text](static/image.png)
 
-## Less high level please
-Basically, the mechanics are this:
-```python
-# use context manager to start background listener and message queue
-with mqdm.mqdms() as pbars:
-    # create progress bars and send them to the remote processes
-    pool.submit(my_work, 1, mqdm=pbars.remote())
-    pool.submit(my_work, 2, mqdm=pbars.remote())
-    pool.submit(my_work, 3, mqdm=pbars.remote())
-
-# your worker function can look like this
-def my_work(n, sleep=1, mqdm: mqdm.Remote):
-    # It takes a proxy mqdm instance that can create new progress bars
-    for i in mqdm(range(n), description=f'counting to {n}'):
-        time.sleep(sleep)
-        mqdm.print("hi")
-
-# or this
-def my_work(n, sleep=1, mqdm: mqdm.Remote):
-    import time
-    with mqdm(description=f'counting to {n}', total=n) as pbar:
-        for i in range(n):
-            pbar.update(0.5, description=f'Im counting - {n}  ')
-            time.sleep(sleep/2)
-            pbar.update(0.5, description=f'Im counting - {n+0.5}')
-            time.sleep(sleep/2)
-```
-
-And you can use it in a pool like this:
-
+## Pandas
 ```python
 import mqdm
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
-items = range(1, 10)
+df = pd.read_csv('...')
 
-with ProcessPoolExecutor(max_workers=n_workers) as pool, mqdm.Bars() as pbars:
-    futures = [
-        pool.submit(my_work, i, pbar=pbars.remote())
-        for i in items
-    ]
-    for f in as_completed(futures):
-        print(f.result())
+# iterrows is a generator - use total to set the iterator length
+for i, x in mqdm.mqdm(df.iterrows(), total=len(df)):
+    for j in mqdm.mqdm(range(x['N']), disable=x['N'] < 10):  # you can disable the progress bar for quick loops
+        ...
 ```
 
-It works by spawning a background thread with a multiprocessing queue. The Bars instance listens for messages from the progress bar proxies in the child processes.
+## Debug utilities
+These are common utilities I use when debugging scripts that require progress bars/multiprocessing.
+
+Open an interactive ipdb shell on exception (like `@ipdb.iex`). This wrapper will make sure that the progress bar does not interfere with the traceback and interactive prompt.
+```python
+@mqdm.iex
+def main():
+    ...
+```
+
+Profiles the function and prints the results upon exiting.
+```python
+@mqdm.profile
+def main():
+    ...
+```
+
+Add a breakpoint without interfering with the progress bar.
+```python
+def main():
+    for i in mqdm.mqdm(range(10)):
+        mqdm.bp()
+```
+
+Open a IPython shell in the current context without interfering with the progress bar.
+```python
+def main():
+    for i in mqdm.mqdm(range(10)):
+        mqdm.embed()
+```
