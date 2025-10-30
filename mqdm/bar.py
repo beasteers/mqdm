@@ -463,7 +463,8 @@ def ipool(
                     futures = []
                     for arg in iter:
                         arg_i = utils.args.from_item(arg)
-                        arg = utils.args.from_item(arg, **kw)
+                        arg = utils.args.from_item(arg)
+                        arg.kw = {**kw, **arg.kw}
                         f = executor.submit(fn, *arg.a, **arg.kw)
                         futures.append(f)
                         f.arg = arg_i
