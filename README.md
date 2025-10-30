@@ -180,6 +180,29 @@ with mqdm(desc='[bold blue]Very important work', total=len(it)) as pbar:
         t.join()
 ```
 
+### Logging and warnings
+Route Python logging and warnings through the progress-friendly console so bars don't break:
+
+```python
+import logging
+from mqdm import install_logging
+install_logging()
+
+
+log = logging.getLogger(__name__)
+log.info("hello")
+
+
+def work(n, sleep=0.05):
+    for _ in mqdm(range(n), desc=f"counting to {n}"):
+        log.info("hi")
+    return n
+
+results = pool(work, range(1, 8), n_workers=3)
+
+```
+
+
 
 ## Minimal API reference
 - `mqdm(iterable=None, desc=None, total=None, disable=False, **kw)`
@@ -195,6 +218,3 @@ with mqdm(desc='[bold blue]Very important work', total=len(it)) as pbar:
 - `ipool(fn, iterable, desc='', bar_kw=None, n_workers=8, pool_mode='process', ordered_=False, squeeze_=True, on_error='cancel', **kw)`
   - Yields results. Unordered by default (faster for long-running tasks).
   - `on_error`: `'cancel'` (stop and cancel unfinished), `'skip'` (log and continue), `'finish'` (collect and raise combined report).
-
-## Notes
-- I haven't given much thought to routing around logging Logger instances. Could be worth handling? 

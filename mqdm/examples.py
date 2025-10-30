@@ -141,6 +141,30 @@ def example_thread_pool(n=5, transient=False, n_workers=5, **kw):
     print("done in", time.time() - t0, "seconds", 123)
 
 
+import logging
+from mqdm import install_logging
+
+install_logging(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+def log_fn(n, sleep=1):
+    import random
+    for i in mqdm(range(n + 1), desc=f'example {n}'):
+        t = sleep * random.random()*2 / (i+1)
+        time.sleep(t)
+        logger.info(f"Task {n}, iteration {i}, slept for {t:.2f} seconds")
+    logger.info(f"Done {n}")
+
+def example_logging(n=5, transient=False, n_workers=5, **kw):
+    pool(
+        log_fn,
+        range(n), 
+        '[bold blue]Very important work with logging',
+        bar_kw={'transient': transient},
+        n_workers=n_workers,
+        **kw)
+
 # @M.profile
 def speed_fn(t, N=1000000000):
     # print("Starting")

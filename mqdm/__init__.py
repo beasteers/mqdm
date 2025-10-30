@@ -14,7 +14,7 @@ from ._dev import embed, inp, bp, iex, profile, timeit
 from .utils import args, fopen, ratelimit
 M.input = inp
 
-
+_logging_config: dict|None = None
 _manager: 'proxy.MqdmManager' = None
 _instances: 'list[M.mqdm]' = []
 _keep = False
@@ -194,6 +194,8 @@ class _pause_exit:
 
 
 from .bar import mqdm, pool, ipool
+from ._logging import install as install_logging, uninstall as uninstall_logging
+
 
 # more descriptive names to avoid polluting the namespace
 mqpool = pool

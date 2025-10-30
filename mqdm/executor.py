@@ -5,7 +5,7 @@ from concurrent.futures import Future, Executor, ThreadPoolExecutor, ProcessPool
 from concurrent.futures._base import LOGGER
 from concurrent.futures.process import _RemoteTraceback  # used in bar.py
 import mqdm as M
-
+from ._logging import _install_from_config
 
 # ---------------------------------------------------------------------------- #
 #                                 Monkey Patch                                 #
@@ -162,13 +162,6 @@ def executor(pool_mode: T_POOL_MODE='process', bar_kw: dict=None, **kw) -> Execu
 
 import threading
 _thread_local_data = threading.local()
-def pbar_initializer(pbar, event, shutdown_event, defaults=None):
-    """Initialize the progress bar for the worker thread/process."""
-    M.pbar = pbar
-    M._pause_event = event
-    M._shutdown_event = shutdown_event
-    _thread_local_data.defaults = defaults if defaults is not None else {}
-
 def _get_local(key, default=None):
     """Get a thread-local variable."""
     return getattr(_thread_local_data, key, default)
@@ -180,9 +173,19 @@ class Initializer:
         self.pbar = M._get_pbar(pool_mode=pool_mode)
         self.pause_event = M._pause_event
         self.shutdown_event = M._shutdown_event
+        self.logging_config = M._logging_config
         self.defaults = defaults if defaults is not None else {}
         self.pause_event.set()
         self.shutdown_event.set()
 
     def __call__(self):
-        return pbar_initializer(self.pbar, self.pause_event, self.shutdown_event, self.defaults)
+        """Initialize the progress bar for the worker thread/process."""
+        M.pbar = self.pbar
+        M._pause_event = self.pause_event
+        M._shutdown_event = self.shutdown_event
+        _thread_local_data.defaults = self.defaults
+        # Mirror logging configuration in workers if present
+        try:
+            _install_from_config(self.logging_config)
+        except Exception:
+            pass
