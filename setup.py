@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name='mqdm',
-    version='1.2.1',
+    version='1.2.2',
     description='cross-process progress bars',
     long_description=open('README.md').read().strip(),
     long_description_content_type='text/markdown',

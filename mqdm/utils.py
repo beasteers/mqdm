@@ -60,6 +60,19 @@ class args:
     @classmethod
     def from_tuples(cls, items, *a, **kw):
         return [cls.from_item(*x, *a, **kw) for x in items]
+    
+class fn(args):
+    def __init__(self, func, *a, **kw):
+        if isinstance(func, args):
+            a = func.a + a
+            kw = {**func.kw, **kw}
+            func = func.fn
+        assert callable(func), "fn's first argument must be a callable function."
+        self.fn = func
+        super().__init__(*a, **kw)
+
+    def __call__(self, *a, **kw):
+        return self.fn(*self.a, *a, **dict(self.kw, **kw))
 
 
 def maybe_call(fn, *a, **kw):

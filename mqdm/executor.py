@@ -1,5 +1,5 @@
 import os
-from typing import Literal
+from typing import Callable, Literal
 from concurrent.futures._base import FINISHED, RUNNING
 from concurrent.futures import Future, Executor, ThreadPoolExecutor, ProcessPoolExecutor
 from concurrent.futures._base import LOGGER
@@ -158,7 +158,7 @@ POOL_EXECUTORS = {
 
 def executor(pool_mode: T_POOL_MODE='process', bar_kw: dict=None, **kw) -> Executor:
     """Return the appropriate executor for the pool mode of the progress bar."""
-    return POOL_EXECUTORS[pool_mode](initializer=Initializer(pool_mode, bar_kw), **kw)
+    return POOL_EXECUTORS[pool_mode](initializer=Initializer(pool_mode=pool_mode, defaults=bar_kw), **kw)
 
 import threading
 _thread_local_data = threading.local()
@@ -168,7 +168,8 @@ def _get_local(key, default=None):
 
 
 class Initializer:
-    def __init__(self, pool_mode: T_POOL_MODE='process', defaults: dict=None):
+    def __init__(self, fn: Callable=None, *a, pool_mode: T_POOL_MODE='process', defaults: dict=None, **kw):
+        self.fn = M.fn(fn, *a, **kw) if fn is not None else None
         self.pool_mode = pool_mode
         self.pbar = M._get_pbar(pool_mode=pool_mode)
         self.pause_event = M._pause_event
@@ -189,3 +190,5 @@ class Initializer:
             _install_from_config(self.logging_config)
         except Exception:
             pass
+        if self.fn is not None:
+            self.fn()

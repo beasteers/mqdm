@@ -11,7 +11,7 @@ from . import utils
 # from .executor import SequentialExecutor, ProcessPoolExecutor, ThreadPoolExecutor, Executor
 from .executor import executor, T_POOL_MODE, Initializer
 from ._dev import embed, inp, bp, iex, profile, timeit
-from .utils import args, fopen, ratelimit
+from .utils import args, fn, fopen, ratelimit
 M.input = inp
 
 _logging_config: dict|None = None
