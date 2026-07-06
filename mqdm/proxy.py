@@ -8,8 +8,6 @@ from multiprocessing.managers import BaseProxy, SyncManager
 import multiprocessing.managers
 import rich
 from rich import progress
-from rich.progress import TaskID
-from .executor import T_POOL_MODE
 import mqdm as M
 
 
@@ -220,6 +218,14 @@ class Progress(progress.Progress):
                   **fields):
         with self._lock:
             return self._dump_task(self._new_task(description or '', start, total, completed, visible, **fields)).to_dict()
+
+
+
+# ---------------------------------------------------------------------------- #
+#                   Multiprocessing Proxy for Progress class                   #
+# to allow sharing progress bar state across processes.
+# ---------------------------------------------------------------------------- #
+
 
 
 

@@ -19,16 +19,16 @@ class mqdm:
             disable (bool): Whether to disable the progress bar.
             **kw: Additional keyword arguments to pass to the progress bar.
         """
-    task_id = None           # the task ID of the progress bar
+    # Local mirrors stay valid even when disabled or detached from a live task.
+    task_id = None           # stable task identity
     pbar = None              # the progress bar instance
     _desc = None             # the description of the progress bar
     _total = None            # the total number of items to iterate over
     _n = 0                   # the number of items completed
     _iter = None             # the item iterator
-    # _items = None            # the items of the iterator (for indexing)
     entered = False          # whether the progress bar has called __enter__()
     started = False          # whether the progress bar has beed started (for lazy start)
-    _task_dict = None        # the dumped task
+    _task_dict = None        # detached serialized task state
     get_desc = None          # a function to get the description
     disable = False          # whether to disable the progress bar
     runtime = None           # runtime that owns this bar's state
@@ -69,11 +69,50 @@ class mqdm:
         if isinstance(it, str) and desc is None:  # infer string as description
             it, desc = None, it
 
+        self._init_runtime(
+            runtime=runtime,
+            disable=disable,
+            fast_fps_delta=fast_fps_delta,
+            progress_kw=progress_kw,
+            auto_refresh=auto_refresh,
+            refresh_per_second=refresh_per_second,
+            speed_estimate_period=speed_estimate_period,
+            redirect_stdout=redirect_stdout,
+            redirect_stderr=redirect_stderr,
+            expand=expand,
+        )
+
+        start, bind_kw = self._init_task(
+            pool_mode=pool_mode,
+            task_id=task_id,
+            start=start,
+            desc=desc,
+            total=total,
+            init_kw=init_kw,
+            completed=completed,
+            visible=visible,
+            bytes=bytes,
+            **fields,
+        )
+        self.started = start
+
+        self(it, desc=..., **bind_kw)  # bind iterable and update progress bar
+
+    def _init_runtime(
+            self, *,
+            runtime,
+            disable,
+            fast_fps_delta,
+            progress_kw,
+            auto_refresh,
+            refresh_per_second,
+            speed_estimate_period,
+            redirect_stdout,
+            redirect_stderr,
+            expand):
         self.runtime = runtime or _get_local('runtime', M._current_runtime())
         self.disable = self.disable if disable is None else disable
-        # self.miniters = miniters
         self.fast_advance = _speed_increment(delta=fast_fps_delta, disable=self.disable, runtime=self.runtime)
-
         self._progress_kw = {
             **(progress_kw or {}),
             "auto_refresh": auto_refresh,
@@ -84,53 +123,71 @@ class mqdm:
             "expand": expand,
         }
 
-        # initialize progress bar task
-        kw = {}
-        init_kw = {
+    def _init_task(
+            self, *,
+            pool_mode,
+            task_id,
+            start,
+            desc,
+            total,
+            init_kw,
+            completed,
+            visible,
+            bytes,
+            **fields):
+        bind_kw = {}
+        init_kw = self._process_args(initial=True, **{
             **_get_local('defaults', {}), 
             **(init_kw or {}),
             'description': desc,
             'start': start,
             'total': total,
-            # 'leave': leave,
-            # 'transient': transient,
             'completed': completed,
             'visible': visible,
             'bytes': bytes,
             **fields,
-        }
-        init_kw = self._process_args(**init_kw)
-        if not self.disable:
-            pbar = self.runtime.get_pbar(pool_mode=pool_mode, **self._progress_kw)
-            self.runtime.add_instance(self)
-            if task_id is None:
-                init_kw.setdefault('total', self._total)
-                init_kw.setdefault('description', '')
-                # if self.miniters:
-                #     self._task_dict = M.pbar.new_task(**init_kw)
-                # else:
-                task_id = pbar.add_task(**init_kw)
-            else:
-                if isinstance(task_id, dict):
-                    self._task_dict = task_dict = task_id
-                    task_id = task_id['id']
-                else:
-                    kw = {**init_kw, **kw}
-                    try:
-                        task_dict = pbar.dump_task(task_id) or {}
-                    except KeyError:
-                        task_dict = {}
-                self._n = task_dict.get('completed', 0)
-                self._total = task_dict.get('total')
-                self._desc = task_dict.get('description')
-                start = bool(task_dict.get('start_time', start))
+        })
+
+        if self.disable:
+            self.task_id = task_id
+            self.fast_advance.task_id = task_id
+            return start, bind_kw
+
+        pbar = self.runtime.get_pbar(pool_mode=pool_mode, **self._progress_kw)
+        self.runtime.add_instance(self)
+
+        if task_id is None:
+            start = self._init_new_task(pbar, init_kw, start)
+        else:
+            start, bind_kw = self._init_existing_task(pbar, task_id, init_kw, start)
+
+        self.fast_advance.task_id = self.task_id
+        return start, bind_kw
+
+    def _init_new_task(self, pbar, init_kw, start):
+        init_kw.setdefault('total', self._total)
+        init_kw.setdefault('description', '')
+        self.task_id = pbar.add_task(**init_kw)
+        return start
+
+    def _init_existing_task(self, pbar, task_id, init_kw, start):
+        bind_kw = {}
+        if isinstance(task_id, dict):
+            self._task_dict = task_dict = task_id
+            task_id = task_id['id']
+        else:
+            bind_kw = init_kw
+            try:
+                task_dict = pbar.dump_task(task_id) or {}
+            except KeyError:
+                task_dict = {}
 
         self.task_id = task_id
-        self.fast_advance.task_id = task_id
-        self.started = start
-
-        # if we have an iterable, start the progress bar
-        self(it, desc=..., **kw)
+        self._n = task_dict.get('completed', 0)
+        self._total = task_dict.get('total')
+        self._desc = task_dict.get('description')
+        start = bool(task_dict.get('start_time', start))
+        return start, bind_kw
 
     # ------------------------------ Dunder methods ------------------------------ #
 
@@ -234,7 +291,7 @@ class mqdm:
     # ------------------------------ Internal methods ----------------------------- #
 
     def _attach(self):
-        """Attach the task to the progress bar."""
+        """Attach local state to a live runtime progress task."""
         if self.disable: return
 
         pbar = self.runtime.get_pbar(start=False, **self._progress_kw)
@@ -245,18 +302,17 @@ class mqdm:
         self.set(total=self._total)
 
     def _detach(self, remove=None, soft=False):
-        """Detach the task from the progress bar."""
+        """Detach from the live task while preserving local task state."""
         pbar = self.runtime.pbar
         if self.disable or pbar is None: return
 
-        # stop and remove task
         if self._task_dict is None:
             self._task_dict = pbar.pop_task(self.task_id, remove=remove)
         self.runtime.remove_instance(self)
         self.runtime.clear_pbar(strict=False, soft=soft)
 
-    def _process_args(self, *, append_total=None, arg=..., i: int=None, **kw) -> dict:
-        """Process keyword arguments for updates."""
+    def _process_args(self, *, initial=False, append_total=None, arg=..., i: int=None, **kw) -> dict:
+        """Normalize task fields and keep local mirrors in sync."""
         kw = {k: v for k, v in kw.items() if v is not ...}
         if 'leave' in kw:  # tqdm compatibility
             kw['transient'] = not kw.pop('leave')
@@ -274,13 +330,12 @@ class mqdm:
         if kw.get('completed') is not None:
             self._n = kw['completed'] = int(kw['completed'])
 
-        # get description
         if 'desc' in kw:  # tqdm compatibility
             kw['description'] = kw.pop('desc')
-        if 'description' in kw and callable(kw['description']):  # handle dynamic descriptions
+        if 'description' in kw and callable(kw['description']):
             self.get_desc = kw.pop('description')
             self.fast_advance.get_desc = self.get_desc
-        if kw.get('description') is None and self.get_desc is not None and arg is not ...:
+        if not initial and kw.get('description') is None and self.get_desc is not None and arg is not ...:
             kw['description'] = self.get_desc(arg, i)
         if kw.get('description') is not None:
             self._desc = kw['description']

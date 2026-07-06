@@ -27,6 +27,8 @@ class Runtime:
         self.instances = OrderedDict()
         self.logging_handlers = weakref.WeakSet()
         self.keep = False
+        self.keep_depth = 0
+        self.capture_warnings = False
         self.logging_config = None
         self.last_pause_wait_time = 0
         self.pause_wait_ttl_seconds = 0.2
@@ -205,13 +207,16 @@ def _current_runtime():
 @contextmanager
 def group():
     """Group progress bars."""
+    runtime = _current_runtime()
+    runtime.keep_depth += 1
+    runtime.keep = True
     try:
-        _current_runtime().keep = True
         yield
     finally:
-        runtime = _current_runtime()
-        runtime.keep = False
-        runtime.clear_pbar()
+        runtime.keep_depth = max(runtime.keep_depth - 1, 0)
+        runtime.keep = runtime.keep_depth > 0
+        if not runtime.keep:
+            runtime.clear_pbar()
 
 
 def print(*args, **kw):

@@ -9,6 +9,10 @@ def _runtime_worker(x):
     return runtime_is_custom, x + 1
 
 
+def _boom(_):
+    raise ValueError("boom")
+
+
 def test_mqdm_string_argument_sets_description():
     bar = M.mqdm("hello", disable=True)
 
@@ -49,6 +53,12 @@ def test_ipool_single_non_subscriptable_iterable():
     results = list(M.ipool(lambda x: x * 2, {3}, pool_mode='sequential', n_workers=1))
 
     assert results == [6]
+
+
+def test_ipool_single_item_respects_on_error_skip():
+    results = list(M.ipool(_boom, [1], pool_mode='sequential', n_workers=1, on_error='skip'))
+
+    assert results == []
 
 
 def test_mqdm_restores_from_task_dict():

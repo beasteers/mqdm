@@ -1,4 +1,3 @@
-import builtins
 import traceback
 from dataclasses import dataclass
 from functools import wraps
@@ -28,10 +27,6 @@ class _PoolPlan:
     fn_kw: dict
     total: int
     runtime: object
-
-    @property
-    def inline_single(self) -> bool:
-        return self.squeeze and self.total == 1
 
     @property
     def worker_bar_kw(self) -> dict:
@@ -87,10 +82,6 @@ def ipool(
         fn_kw=kw,
         runtime=runtime or M._current_runtime(),
     )
-
-    if plan.inline_single:
-        yield _run_inline_single(plan)
-        return
 
     remote_exceptions = {}
     try:
@@ -192,11 +183,6 @@ def _make_pool_plan(
 
 
 # ------------------------------- Task Handling ------------------------------ #
-
-
-def _run_inline_single(plan: _PoolPlan):
-    arg = utils.args.from_item(next(builtins.iter(plan.iterable)), **plan.fn_kw)
-    return arg(plan.fn)
 
 
 def _submit_tasks(executor, plan: _PoolPlan, pbar: mqdm) -> list[_Task]:

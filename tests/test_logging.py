@@ -1,4 +1,5 @@
 import logging
+import warnings
 
 import mqdm as M
 from mqdm import install_logging, uninstall_logging
@@ -38,3 +39,26 @@ def test_install_logging_binds_handler_to_runtime():
     uninstall_logging(runtime=runtime)
     assert handlers[0] not in root.handlers
     assert runtime.logging_config is None
+
+
+def test_warning_capture_is_released_only_after_last_runtime_uninstalls():
+    rt1 = M.Runtime()
+    rt2 = M.Runtime()
+
+    uninstall_logging(runtime=rt1)
+    uninstall_logging(runtime=rt2)
+
+    original_showwarning = warnings.showwarning
+    try:
+        install_logging(runtime=rt1)
+        install_logging(runtime=rt2)
+        assert warnings.showwarning.__module__ == "logging"
+
+        uninstall_logging(runtime=rt1)
+        assert warnings.showwarning.__module__ == "logging"
+
+        uninstall_logging(runtime=rt2)
+        assert warnings.showwarning is original_showwarning
+    finally:
+        uninstall_logging(runtime=rt1)
+        uninstall_logging(runtime=rt2)

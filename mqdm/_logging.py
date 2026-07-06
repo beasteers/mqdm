@@ -2,6 +2,8 @@ import logging
 import warnings
 import mqdm as M
 
+_warning_capture_refcount = 0
+
 
 class MQDMHandler(logging.Handler):
     """A logging handler that routes records through mqdm.print so output
@@ -41,6 +43,23 @@ def _make_default_formatter() -> logging.Formatter:
     )
 
 
+def _acquire_warning_capture() -> None:
+    global _warning_capture_refcount
+    if _warning_capture_refcount == 0:
+        warnings.simplefilter("default")
+        logging.captureWarnings(True)
+    _warning_capture_refcount += 1
+
+
+def _release_warning_capture() -> None:
+    global _warning_capture_refcount
+    if _warning_capture_refcount == 0:
+        return
+    _warning_capture_refcount -= 1
+    if _warning_capture_refcount == 0:
+        logging.captureWarnings(False)
+
+
 def install(
     logger: logging.Logger = None,
     *,
@@ -75,9 +94,11 @@ def install(
     if level is not None:
         logger.setLevel(level)
 
-    if capture_warnings:
-        warnings.simplefilter("default")
-        logging.captureWarnings(True)
+    if capture_warnings and not runtime.capture_warnings:
+        _acquire_warning_capture()
+    elif not capture_warnings and runtime.capture_warnings:
+        _release_warning_capture()
+    runtime.capture_warnings = capture_warnings
 
     # Save minimal config for worker processes to mirror
     runtime.logging_config = {
@@ -98,8 +119,10 @@ def uninstall(*, logger: logging.Logger = None, runtime=None) -> None:
     for h in to_remove:
         logger.removeHandler(h)
         runtime.logging_handlers.discard(h)
+    if runtime.capture_warnings:
+        _release_warning_capture()
+        runtime.capture_warnings = False
     runtime.logging_config = None
-    logging.captureWarnings(False)
 
 
 def _install_from_config(cfg: dict | None) -> None:
