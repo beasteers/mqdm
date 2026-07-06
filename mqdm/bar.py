@@ -69,7 +69,7 @@ class mqdm:
         if isinstance(it, str) and desc is None:  # infer string as description
             it, desc = None, it
 
-        self.runtime = runtime or _get_local('runtime', M._runtime)
+        self.runtime = runtime or _get_local('runtime', M._current_runtime())
         # if disable is not None:
         #     self.disable = disable
         if disable is None:

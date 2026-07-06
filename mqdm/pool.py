@@ -7,7 +7,7 @@ from concurrent.futures import Future, as_completed
 
 import mqdm as M
 
-from . import utils
+from . import Runtime, utils
 from .bar import mqdm
 from .executor import T_POOL_MODE, _RemoteTraceback
 
@@ -66,7 +66,7 @@ def ipool(
         ordered_: bool=False,
         squeeze_: bool=True,
         on_error: Literal['finish', 'cancel', 'skip']='cancel',
-        runtime=None,
+        runtime: Runtime=None,
         **kw) -> Iterable:
     """Execute a function in a process pool with a progress bar for each task."""
     plan = _make_pool_plan(
@@ -80,7 +80,7 @@ def ipool(
         squeeze=squeeze_,
         on_error=on_error,
         fn_kw=kw,
-        runtime=runtime or M._runtime,
+        runtime=runtime or M._current_runtime(),
     )
 
     if plan.inline_single:

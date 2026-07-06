@@ -170,7 +170,7 @@ def _get_local(key, default=None):
 class Initializer:
     def __init__(self, fn: Callable=None, *a, pool_mode: T_POOL_MODE='process', defaults: dict=None, runtime=None, **kw):
         self.fn = M.fn(fn, *a, **kw) if fn is not None else None
-        self.runtime = runtime or M._runtime
+        self.runtime = runtime or M._current_runtime()
         self.pool_mode = pool_mode
         self.pbar = self.runtime.get_pbar(pool_mode=pool_mode)
         self.pause_event = self.runtime.pause_event
@@ -183,7 +183,7 @@ class Initializer:
     def __call__(self):
         """Initialize the progress bar for the worker thread/process."""
         _thread_local_data.runtime = self.runtime
-        M._runtime.install_worker_context(
+        self.runtime.install_worker_context(
             pbar=self.pbar,
             pause_event=self.pause_event,
             shutdown_event=self.shutdown_event,

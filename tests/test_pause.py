@@ -12,3 +12,16 @@ def test_runtime_holds_private_state():
     assert M._runtime.pause_event is not None
     assert M._runtime.shutdown_event is not None
     assert M._runtime.instances is not None
+
+
+def test_runtime_atexit_clears_private_state():
+    runtime = M.Runtime()
+    bar = M.mqdm(total=1, runtime=runtime)
+
+    assert runtime.pbar is not None
+    assert runtime.instances
+
+    runtime.atexit()
+
+    assert runtime.pbar is None
+    assert not runtime.instances

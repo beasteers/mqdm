@@ -11,6 +11,8 @@ from rich import progress
 import mqdm as M  # self
 from . import utils
 
+_all_runtimes = weakref.WeakSet()
+
 
 class Runtime:
     def __init__(self):
@@ -21,10 +23,12 @@ class Runtime:
         self.shutdown_event = threading.Event()
         self.shutdown_event.set()
         self.instances = OrderedDict()
+        self.logging_handlers = weakref.WeakSet()
         self.keep = False
         self.logging_config = None
         self.last_pause_wait_time = 0
         self.pause_wait_ttl_seconds = 0.2
+        _all_runtimes.add(self)
 
     def new_pbar(self, pool_mode=None, bytes=False, **kw):
         from . import proxy
@@ -133,6 +137,32 @@ class Runtime:
         self.shutdown_event = shutdown_event
         self.logging_config = logging_config
 
+    def get_manager(self):
+        if self.manager is not None:
+            return self.manager
+        from .proxy import MqdmManager
+
+        self.manager = manager = MqdmManager()
+        manager.start()
+        self.pause_event = manager.Event()
+        self.pause_event.set()
+        self.shutdown_event = manager.Event()
+        self.shutdown_event.set()
+        return manager
+
+    def shutdown_manager(self):
+        manager = self.manager
+        if manager is None:
+            return
+        try:
+            manager.shutdown()
+        finally:
+            self.manager = None
+
+    def atexit(self):
+        self.close_instances()
+        self.shutdown_manager()
+
 
 _runtime = Runtime()
 
@@ -199,9 +229,14 @@ class _pause_exit:
             pause(False)
 
 
-def _close_instances():
-    return _runtime.close_instances()
-atexit.register(_close_instances)
+def _atexit_runtimes():
+    for runtime in list(_all_runtimes):
+        try:
+            runtime.atexit()
+        except Exception:
+            pass
+
+atexit.register(_atexit_runtimes)
 
 
 from .executor import executor, T_POOL_MODE, Initializer

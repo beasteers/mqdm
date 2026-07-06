@@ -17,8 +17,9 @@ class MQDMHandler(logging.Handler):
         logging.CRITICAL: "bold red",
     }
 
-    def __init__(self, *, markup: bool = True, level: int = logging.NOTSET):
+    def __init__(self, runtime, *, markup: bool = True, level: int = logging.NOTSET):
         super().__init__(level)
+        self.runtime = runtime
         self.markup = markup
 
     def emit(self, record: logging.LogRecord) -> None:
@@ -28,7 +29,7 @@ class MQDMHandler(logging.Handler):
                 style = self.LEVEL_STYLE.get(record.levelno, "")
                 if style:
                     msg = f"[{style}]{msg}[/{style}]"
-            M.print(msg)
+            self.runtime.print(msg)
         except Exception:
             self.handleError(record)
 
@@ -48,6 +49,7 @@ def install(
     capture_warnings: bool = True,
     markup: bool = True,
     formatter: logging.Formatter | None = None,
+    runtime=None,
 ) -> None:
     """Install an mqdm-aware logging handler on the root logger.
 
@@ -57,17 +59,19 @@ def install(
 
     Also stores minimal configuration so worker processes can mirror logging.
     """
+    runtime = runtime or M._current_runtime()
     if logger is None:
         logger = logging.getLogger()
     if replace_root:
         logger.handlers.clear()
 
-    # Avoid duplicate handlers; reuse if already installed
-    existing = next((h for h in logger.handlers if isinstance(h, MQDMHandler)), None)
-    handler = existing or MQDMHandler(markup=markup)
+    # Avoid duplicate handlers for the same runtime; allow distinct runtimes.
+    existing = next((h for h in logger.handlers if isinstance(h, MQDMHandler) and h.runtime is runtime), None)
+    handler = existing or MQDMHandler(runtime, markup=markup)
     handler.setFormatter(formatter or getattr(handler, 'formatter', None) or _make_default_formatter())
     if not existing:
         logger.addHandler(handler)
+        runtime.logging_handlers.add(handler)
     if level is not None:
         logger.setLevel(level)
 
@@ -76,7 +80,7 @@ def install(
         logging.captureWarnings(True)
 
     # Save minimal config for worker processes to mirror
-    M._runtime.logging_config = {
+    runtime.logging_config = {
         "level": level,
         "markup": markup,
         "capture_warnings": capture_warnings,
@@ -86,12 +90,15 @@ def install(
     }
 
 
-def uninstall() -> None:
+def uninstall(*, logger: logging.Logger = None, runtime=None) -> None:
     """Remove MQDMHandler from the root logger and stop warning capture."""
-    logger = logging.getLogger()
-    to_remove = [h for h in logger.handlers if isinstance(h, MQDMHandler)]
+    runtime = runtime or M._current_runtime()
+    logger = logger or logging.getLogger()
+    to_remove = [h for h in logger.handlers if isinstance(h, MQDMHandler) and h.runtime is runtime]
     for h in to_remove:
         logger.removeHandler(h)
+        runtime.logging_handlers.discard(h)
+    runtime.logging_config = None
     logging.captureWarnings(False)
 
 
@@ -108,4 +115,5 @@ def _install_from_config(cfg: dict | None) -> None:
         capture_warnings=cfg.get("capture_warnings", True),
         markup=cfg.get("markup", True),
         formatter=formatter,
+        runtime=M._current_runtime(),
     )

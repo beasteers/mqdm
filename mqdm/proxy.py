@@ -133,6 +133,7 @@ class Progress(progress.Progress):
 
     def convert_proxy(self, runtime=None) -> 'ProgressProxy':
         """Convert to a multiprocessing proxy object so methods can be called in another process."""
+        runtime = runtime or M._current_runtime()
         # get current state and cleanup
         started = self.live.is_started
         tasks = self.dump_tasks()
@@ -143,7 +144,7 @@ class Progress(progress.Progress):
         self.stop()
 
         # create proxy
-        proxy = get_manager(runtime=runtime).mqdm_Progress(
+        proxy = runtime.get_manager().mqdm_Progress(
             *self.columns,
             _tasks=tasks,
             _task_index=self._task_index,
@@ -277,36 +278,11 @@ class MqdmManager(SyncManager):
     mqdm_Progress: Type[ProgressProxy]
 MqdmManager.register('mqdm_Progress', Progress, ProgressProxy)
 
-def get_manager(runtime=None) -> MqdmManager:
-    runtime = runtime or M._runtime
-    if runtime.manager is not None:
-        return runtime.manager
-    runtime.manager = manager = MqdmManager()
-    manager.start()
-    runtime.pause_event = manager.Event()
-    runtime.pause_event.set()
-    runtime.shutdown_event = manager.Event()
-    runtime.shutdown_event.set()
-    return manager
-
-import atexit
-
-def _shutdown_manager():
-    try:
-        manager = M._runtime.manager
-        if manager is not None:
-            manager.shutdown()
-            M._runtime.manager = None
-    except Exception:
-        # Best-effort shutdown; ignore errors at interpreter teardown
-        pass
-
-atexit.register(_shutdown_manager)
-
 
 def get_progress_instance(pool_mode: T_POOL_MODE=None, *columns, runtime=None, **kw):
+    runtime = runtime or M._current_runtime()
     if pool_mode == 'process':
-        manager = get_manager(runtime=runtime)
+        manager = runtime.get_manager()
         return manager.mqdm_Progress(*columns, **kw)
     return Progress(*columns, **kw)
 

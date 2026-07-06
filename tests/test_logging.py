@@ -21,3 +21,20 @@ def test_install_uninstall_logging_handler_idempotent():
     uninstall_logging()
     n2 = _count_mqdm_handlers(root)
     assert n2 == n0
+
+
+def test_install_logging_binds_handler_to_runtime():
+    root = logging.getLogger()
+    runtime = M.Runtime()
+    uninstall_logging()
+
+    install_logging(level=logging.INFO, runtime=runtime)
+
+    handlers = [h for h in root.handlers if h.__class__.__name__ == 'MQDMHandler' and h.runtime is runtime]
+    assert len(handlers) == 1
+    assert handlers[0] in runtime.logging_handlers
+    assert runtime.logging_config["level"] == logging.INFO
+
+    uninstall_logging(runtime=runtime)
+    assert handlers[0] not in root.handlers
+    assert runtime.logging_config is None
