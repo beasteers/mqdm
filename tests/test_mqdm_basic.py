@@ -61,3 +61,26 @@ def test_mqdm_restores_from_task_dict():
         assert bar._task_dict['id'] == 7
     finally:
         bar.close()
+
+
+def test_mqdm_can_use_custom_runtime():
+    runtime = M.Runtime()
+    bar = M.mqdm(total=2, runtime=runtime)
+
+    try:
+        assert bar.runtime is runtime
+        assert runtime.pbar is not None
+        assert M._runtime is not runtime
+    finally:
+        bar.close()
+
+    assert runtime.pbar is None
+
+
+def test_ipool_can_use_custom_runtime():
+    runtime = M.Runtime()
+
+    results = list(M.ipool(lambda x: x + 1, [1, 2], runtime=runtime, pool_mode='sequential', n_workers=1))
+
+    assert results == [2, 3]
+    assert runtime.pbar is None

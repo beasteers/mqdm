@@ -27,6 +27,7 @@ class _PoolPlan:
     on_error: Literal['finish', 'cancel', 'skip']
     fn_kw: dict
     total: int
+    runtime: object
 
     @property
     def inline_single(self) -> bool:
@@ -65,6 +66,7 @@ def ipool(
         ordered_: bool=False,
         squeeze_: bool=True,
         on_error: Literal['finish', 'cancel', 'skip']='cancel',
+        runtime=None,
         **kw) -> Iterable:
     """Execute a function in a process pool with a progress bar for each task."""
     plan = _make_pool_plan(
@@ -78,6 +80,7 @@ def ipool(
         squeeze=squeeze_,
         on_error=on_error,
         fn_kw=kw,
+        runtime=runtime or M._runtime,
     )
 
     if plan.inline_single:
@@ -86,8 +89,8 @@ def ipool(
 
     remote_exceptions = {}
     try:
-        with mqdm(desc=plan.desc, elapsed_speed=True, **plan.bar_kw) as pbar:
-            with M.executor(plan.pool_mode, bar_kw=plan.worker_bar_kw, max_workers=plan.n_workers) as executor:
+        with mqdm(desc=plan.desc, elapsed_speed=True, runtime=plan.runtime, **plan.bar_kw) as pbar:
+            with M.executor(plan.pool_mode, bar_kw=plan.worker_bar_kw, max_workers=plan.n_workers, runtime=plan.runtime) as executor:
                 try:
                     tasks = _submit_tasks(executor, plan, pbar)
                     for outcome in _iter_outcomes(tasks, ordered=plan.ordered):
@@ -97,7 +100,7 @@ def ipool(
                             continue
                         if plan.on_error == 'skip':
                             _add_func_args_str_to_exception(outcome.error, plan.fn, outcome.task.display_arg)
-                            M.print(''.join(traceback.format_exception(type(outcome.error), outcome.error, outcome.error.__traceback__)))
+                            plan.runtime.print(''.join(traceback.format_exception(type(outcome.error), outcome.error, outcome.error.__traceback__)))
                             continue
                         if plan.on_error == 'cancel':
                             _add_func_args_str_to_exception(outcome.error, plan.fn, outcome.task.display_arg)
@@ -105,11 +108,11 @@ def ipool(
                             raise outcome.error
                         _append_remote_exception(remote_exceptions, outcome.error, plan.fn, outcome.task.display_arg)
                 except KeyboardInterrupt:
-                    M.pause()
-                    _shutdown_for_interrupt(executor, plan.pool_mode)
+                    plan.runtime.pause()
+                    _shutdown_for_interrupt(executor, plan.pool_mode, plan.runtime)
                     raise
     except:
-        M.pause()
+        plan.runtime.pause()
         raise
 
     if remote_exceptions:
@@ -127,7 +130,8 @@ def _make_pool_plan(
         ordered: bool,
         squeeze: bool,
         on_error: Literal['finish', 'cancel', 'skip'],
-        fn_kw: dict) -> _PoolPlan:
+        fn_kw: dict,
+        runtime) -> _PoolPlan:
     total = utils.try_len(iterable, -1)
     if squeeze and total >= 0 and n_workers > total:
         n_workers = total
@@ -148,6 +152,7 @@ def _make_pool_plan(
         on_error=on_error,
         fn_kw=fn_kw,
         total=total,
+        runtime=runtime,
     )
 
 
@@ -192,14 +197,14 @@ def _cancel_pending(tasks: list[_Task], executor) -> None:
     executor.shutdown(wait=False, cancel_futures=True)
 
 
-def _shutdown_for_interrupt(executor, pool_mode: T_POOL_MODE) -> None:
+def _shutdown_for_interrupt(executor, pool_mode: T_POOL_MODE, runtime) -> None:
     if pool_mode == 'process':
         try:
             for pid, process in getattr(executor, '_processes', {}).items():
                 print(f"Killing process {pid}...")
                 process.kill()
         except Exception as e:
-            M.print(f"Error killing processes: {e}")
+            runtime.print(f"Error killing processes: {e}")
     executor.shutdown(wait=False, cancel_futures=True)
 
 
@@ -258,8 +263,9 @@ def pool(
         results_: list=None,
         ordered_: bool=True,
         squeeze_: bool=True,
+        runtime=None,
         **kw) -> Iterable:
     results_ = [] if results_ is None else results_
-    for x in ipool(fn, iter, desc=desc, bar_kw=bar_kw, n_workers=n_workers, pool_mode=pool_mode, ordered_=ordered_, squeeze_=squeeze_, **kw):
+    for x in ipool(fn, iter, desc=desc, bar_kw=bar_kw, n_workers=n_workers, pool_mode=pool_mode, ordered_=ordered_, squeeze_=squeeze_, runtime=runtime, **kw):
         results_.append(x)
     return results_

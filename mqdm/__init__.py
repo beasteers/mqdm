@@ -136,46 +136,34 @@ class Runtime:
 
 _runtime = Runtime()
 
-
-def _get_pbar(pool_mode=None, start=True, **kw):
-    return _runtime.get_pbar(pool_mode=pool_mode, start=start, **kw)
-
-
-def _clear_pbar(strict=True, force=False, soft=False):
-    return _runtime.clear_pbar(strict=strict, force=force, soft=soft)
-
-
-def _add_instance(bar):
-    return _runtime.add_instance(bar)
-
-
-def _remove_instance(bar):
-    return _runtime.remove_instance(bar)
-
-
-def _close_instances():
-    return _runtime.close_instances()
+def _current_runtime():
+    try:
+        from .executor import _get_local
+        return _get_local('runtime', _runtime)
+    except Exception:
+        return _runtime
 
 
 @contextmanager
 def group():
     """Group progress bars."""
     try:
-        _runtime.keep = True
+        _current_runtime().keep = True
         yield
     finally:
-        _runtime.keep = False
-        _runtime.clear_pbar()
+        runtime = _current_runtime()
+        runtime.keep = False
+        runtime.clear_pbar()
 
 
 def print(*args, **kw):
     """Print with rich."""
-    return _runtime.print(*args, **kw)
+    return _current_runtime().print(*args, **kw)
 
 
 def get(i=-1):
     """Get an mqdm instance."""
-    return _runtime.get_instance(i)
+    return _current_runtime().get_instance(i)
 
 
 def set_description(desc, i=-1):
@@ -193,17 +181,9 @@ def update(n=1, i=-1, **kw):
     return get(i).update(n, **kw)
 
 
-def _pause_wait():
-    _runtime.pause_wait()
-
-
-def _ttl_pause_wait():
-    _runtime.ttl_pause_wait()
-
-
 def pause(paused=True):
     """Pause the progress bars. Useful for opening an interactive shell or printing stack traces."""
-    return _runtime.pause(paused)
+    return _current_runtime().pause(paused)
 
 
 class _pause_exit:
@@ -219,6 +199,8 @@ class _pause_exit:
             pause(False)
 
 
+def _close_instances():
+    return _runtime.close_instances()
 atexit.register(_close_instances)
 
 

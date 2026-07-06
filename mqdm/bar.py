@@ -1,7 +1,7 @@
 ''''''
 import time
 import sys
-from . import print, T_POOL_MODE, _ttl_pause_wait
+from . import T_POOL_MODE
 from . import utils
 from .executor import _get_local
 import mqdm as M
@@ -31,6 +31,7 @@ class mqdm:
     _task_dict = None        # the dumped task
     get_desc = None          # a function to get the description
     disable = False          # whether to disable the progress bar
+    runtime = None           # runtime that owns this bar's state
 
     def __init__(
             self, 
@@ -38,6 +39,7 @@ class mqdm:
 
             # mqdm arguments
             pool_mode=None, 
+            runtime=None,
             disable=None, 
             # miniters=None, 
             fast_fps_delta=0.05, 
@@ -67,13 +69,14 @@ class mqdm:
         if isinstance(it, str) and desc is None:  # infer string as description
             it, desc = None, it
 
+        self.runtime = runtime or _get_local('runtime', M._runtime)
         # if disable is not None:
         #     self.disable = disable
         if disable is None:
             disable = self.disable
         self.disable = disable
         # self.miniters = miniters
-        self.fast_advance = _speed_increment(delta=fast_fps_delta, disable=disable)
+        self.fast_advance = _speed_increment(delta=fast_fps_delta, disable=self.disable, runtime=self.runtime)
 
         self._progress_kw = {
             **(progress_kw or {}),
@@ -102,8 +105,8 @@ class mqdm:
         }
         init_kw = self._process_args(**init_kw)
         if not self.disable:
-            pbar = M._get_pbar(pool_mode=pool_mode, **self._progress_kw)
-            M._add_instance(self)
+            pbar = self.runtime.get_pbar(pool_mode=pool_mode, **self._progress_kw)
+            self.runtime.add_instance(self)
             if task_id is None:
                 init_kw.setdefault('total', self._total)
                 init_kw.setdefault('description', '')
@@ -171,7 +174,7 @@ class mqdm:
     def __exit__(self, t, e, tb):
         self.entered = False
         self.close()
-        pbar = M._runtime.pbar
+        pbar = self.runtime.pbar
         if isinstance(e, KeyboardInterrupt) and pbar is not None:
             pbar.stop()
 
@@ -191,12 +194,12 @@ class mqdm:
             fast_advance = self.fast_advance
             it = enumerate(iter)
             i, x = next(it)
-            _ttl_pause_wait()
+            self.runtime.ttl_pause_wait()
             self._n += 1
             fast_advance(0, arg=x, i=i, flush=True)
             yield x
             for i, x in it:
-                _ttl_pause_wait()
+                self.runtime.ttl_pause_wait()
                 self._n += 1
                 fast_advance(1, arg=x, i=i)
                 yield x
@@ -238,8 +241,8 @@ class mqdm:
         """Attach the task to the progress bar."""
         if self.disable: return
 
-        pbar = M._get_pbar(start=False, **self._progress_kw)
-        M._add_instance(self)
+        pbar = self.runtime.get_pbar(start=False, **self._progress_kw)
+        self.runtime.add_instance(self)
         if self._task_dict is not None:
             pbar.load_task(self._task_dict)
             self._task_dict = None
@@ -247,14 +250,14 @@ class mqdm:
 
     def _detach(self, remove=None, soft=False):
         """Detach the task from the progress bar."""
-        pbar = M._runtime.pbar
+        pbar = self.runtime.pbar
         if self.disable or pbar is None: return
 
         # stop and remove task
         if self._task_dict is None:
             self._task_dict = pbar.pop_task(self.task_id, remove=remove)
-        M._remove_instance(self)
-        M._clear_pbar(strict=False, soft=soft)
+        self.runtime.remove_instance(self)
+        self.runtime.clear_pbar(strict=False, soft=soft)
 
     def _process_args(self, *, append_total=None, arg=..., i: int=None, **kw) -> dict:
         """Process keyword arguments for updates."""
@@ -328,7 +331,7 @@ class mqdm:
 
     def print(self, *a, **kw) -> 'mqdm':
         """Print above the progress bar."""
-        M.print(*a, **kw)
+        self.runtime.print(*a, **kw)
         return self
 
     def set_description(self, desc) -> 'mqdm':
@@ -346,7 +349,7 @@ class mqdm:
 
         # update progress bar
         if kw:
-            M._runtime.pbar.update_(self.task_id, **kw)
+            self.runtime.pbar.update_(self.task_id, **kw)
         return self
 
 
@@ -354,13 +357,14 @@ class _speed_increment:
     """Increment the progress bar in a very fast loop.
     Saves time by reducing inter-process IO.
     """
-    __slots__ = ('n', 'nc', 't', 'disable', 'delta', 'get_desc', 'task_id')
-    def __init__(self, delta=0, disable=False):
+    __slots__ = ('n', 'nc', 't', 'disable', 'delta', 'get_desc', 'task_id', 'runtime')
+    def __init__(self, runtime, delta=0, disable=False):
         self.delta = delta
         self.n = self.t = 0
         self.nc = ...
         self.get_desc = None
         self.task_id = None
+        self.runtime = runtime
         self.disable = disable
 
     def flush(self):
@@ -388,7 +392,7 @@ class _speed_increment:
                 self.n = n
                 return
 
-        pbar = M._runtime.pbar
+        pbar = self.runtime.pbar
         if pbar is None:
             return
         

@@ -182,6 +182,7 @@ class Initializer:
 
     def __call__(self):
         """Initialize the progress bar for the worker thread/process."""
+        _thread_local_data.runtime = self.runtime
         M._runtime.install_worker_context(
             pbar=self.pbar,
             pause_event=self.pause_event,
