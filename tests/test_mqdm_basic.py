@@ -63,6 +63,27 @@ def test_ipool_single_item_respects_on_error_skip():
     assert results == []
 
 
+@pytest.mark.parametrize('pool_mode', ['sequential', 'thread'])
+def test_ipool_on_error_finish_aggregates_local_exceptions(pool_mode):
+    with pytest.raises(ValueError, match="observed in 1 remote function calls"):
+        list(M.ipool(_boom, [1], pool_mode=pool_mode, n_workers=2, on_error='finish'))
+
+
+@pytest.mark.parametrize('pool_mode', ['sequential', 'thread'])
+def test_ipool_on_error_finish_raises_after_yielding_successes(pool_mode):
+    def work(x):
+        if x == 1:
+            raise ValueError("boom")
+        return x * 2
+
+    results = []
+    with pytest.raises(ValueError, match="observed in 1 remote function calls"):
+        for value in M.ipool(work, [0, 1], pool_mode=pool_mode, n_workers=2, ordered_=True, on_error='finish'):
+            results.append(value)
+
+    assert results == [0]
+
+
 def test_ipool_threaded_generator_streams_without_eager_submission():
     submitted = []
 

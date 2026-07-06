@@ -283,11 +283,12 @@ def _add_func_args_str_to_exception(e, fn, arg):
 
 def _append_remote_exception(excs, e, fn, arg):
     tb = getattr(getattr(e, '__cause__', None), 'tb', None)
-    if tb is not None and isinstance(tb, str):
-        k = (e.__class__, str(e), tb)
-        if k not in excs:
-            excs[k] = []
-        excs[k].append(f"{fn.__name__}{arg}")
+    if not isinstance(tb, str):
+        tb = ''.join(traceback.format_exception(type(e), e, e.__traceback__)).rstrip()
+    k = (e.__class__, str(e), tb)
+    if k not in excs:
+        excs[k] = []
+    excs[k].append(f"{fn.__name__}{arg}")
     return excs
 
 
