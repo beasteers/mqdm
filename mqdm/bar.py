@@ -1,8 +1,8 @@
 ''''''
-import time
 from time import monotonic
 import sys
-from . import T_POOL_MODE, Runtime
+
+from . import Runtime
 from . import utils
 from .executor import _get_local
 import mqdm as M
@@ -96,6 +96,7 @@ class mqdm:
             **fields,
         )
         self.started = start
+        self.fast_advance = self._get_fast_advance()
 
         self(it, desc=..., **bind_kw)  # bind iterable and update progress bar
 
@@ -113,7 +114,6 @@ class mqdm:
             expand):
         self.runtime = runtime or _get_local('runtime', M._current_runtime())
         self.disable = self.disable if disable is None else disable
-        self.fast_advance = _speed_increment(delta=fast_fps_delta, runtime=self.runtime)
         self._progress_kw = {
             **(progress_kw or {}),
             "auto_refresh": auto_refresh,
@@ -161,7 +161,6 @@ class mqdm:
                 start = bool(task_id.get('start_time', start))
             else:
                 self.task_id = task_id
-            self.fast_advance.task_id = self.task_id
             return start, bind_kw
 
         pbar = self.runtime.get_pbar(pool_mode=pool_mode, **self._progress_kw)
@@ -172,7 +171,6 @@ class mqdm:
         else:
             start, bind_kw = self._init_existing_task(pbar, task_id, init_kw, start)
 
-        self.fast_advance.task_id = self.task_id
         return start, bind_kw
 
     def _init_new_task(self, pbar, init_kw, start):
@@ -252,38 +250,127 @@ class mqdm:
 
     # ----------------------------- Iteration methods ---------------------------- #
 
-    def _get_iter(self, it):
-        if self.disable:
-            yield from it
-            return
 
+
+    def _get_fast_advance(self):
         D = self.__dict__
-        fast_advance = self.fast_advance
+        disable = self.disable
         ttl_pause_wait = self.runtime.ttl_pause_wait
-        update = fast_advance.__call__
-        flush = fast_advance.flush
+        delta = 1 / (self._progress_kw['refresh_per_second'] or 8)
+        pbar = self.runtime.pbar
+        task_id = self.task_id
+        get_desc = self.get_desc
 
+        n_acc = 0
+        t_last = 0
+        def update(x=..., n=1, flush=False):
+            nonlocal t_last, n_acc
+            if disable:
+                D['_n'] += n
+                return
+            n_acc += n
+
+            # If the time since the last increment is less than some delta, increment a local counter
+            # The only time this fails is if the iterations are highly irregular 
+            # (e.g. a bunch of 1000fps followed by a 100 second iteration
+            #       - could happen with overwrite=False type scenarios)
+            t = monotonic()
+            if t - t_last >= delta or flush:
+                D['_n'] += n_acc
+                kw = {}
+                if x is not ...:
+                    if get_desc is not None:
+                        desc = get_desc(x, D['_n']-1)
+                        if desc is not None:
+                            kw['description'] = desc
+                    
+                pbar.update_(task_id, advance=n_acc, **kw)
+                ttl_pause_wait()
+
+                n_acc = 0
+                t_last = t
+
+        return update
+    
+    def _reset_fast_advance(self):
+        if self.fast_advance is not None:
+            self.fast_advance(n=0, flush=True)
+        self.fast_advance = self._get_fast_advance()
+
+    def _get_iter(self, it):
+        self._reset_fast_advance()
+        update = self.fast_advance
+        it = iter(it)
         try:
-            ttl_pause_wait()
-            i = 0
-            D['_n'] = 1
-            it = iter(it)
             x = next(it)
-            flush(x, i)
+            update(x, 1, flush=True)
             yield x
         except StopIteration:
-            flush()
+            update(..., 0, flush=True)
             return 
 
         for x in it:
-            # ttl_pause_wait()
-            i += 1
-            # D['_n'] = i + 1
-            update(1, x, i)
+            update(x, 1)
             yield x
-        update(1)
-        flush(x, i)
-        D['_n'] = i + 1
+        update(x, 0, flush=True)
+
+    # def _get_iter(self, it):
+    #     D = self.__dict__
+    #     if self.disable:
+    #         for x in it:
+    #             D['_n'] += 1
+    #             yield x
+    #         return
+
+    #     ttl_pause_wait = self.runtime.ttl_pause_wait
+    #     delta = 1 / (self._progress_kw['refresh_per_second'] or 8)
+    #     pbar = self.runtime.pbar
+    #     update = pbar.update_
+    #     task_id = self.task_id
+    #     get_desc = self.get_desc
+
+    #     def flush(n=0, x=None, i=None):
+    #         kw = {}
+    #         if i is not ...:
+    #             if get_desc is not None:
+    #                 desc = get_desc(x, i)
+    #                 if desc is not None:
+    #                     kw['description'] = desc
+    #         update(task_id, advance=n, **kw)
+    #         D['_n'] = i + 1
+    #         ttl_pause_wait()
+
+    #     try:
+    #         ttl_pause_wait()
+    #         i = 0
+    #         # D['_n'] = 1
+    #         it = iter(it)
+    #         x = next(it)
+    #         flush(0, x, i)
+    #         yield x
+    #     except StopIteration:
+    #         flush()
+    #         return 
+
+    #     n = 0
+    #     t_last = 0
+    #     for x in it:
+    #         i += 1
+    #         n += 1
+
+    #         # If the time since the last increment is less than some delta, increment a local counter
+    #         # The only time this fails is if the iterations are highly irregular 
+    #         # (e.g. a bunch of 1000fps followed by a 100 second iteration
+    #         #       - could happen with overwrite=False type scenarios)
+    #         t = monotonic()
+    #         if t - t_last >= delta:
+    #             flush(n, x, i)
+    #             n = 0
+    #             t_last = t
+    #         yield x
+    #     flush(n, x, i)
+    #     n = 0
+    #     D['_n'] = i + 1
 
     def __call__(self, iter, desc=None, total=None, **kw) -> 'mqdm':
         """Iterate over an iterable with a progress bar."""
@@ -355,7 +442,6 @@ class mqdm:
             kw['description'] = kw.pop('desc')
         if 'description' in kw and callable(kw['description']):
             self.get_desc = kw.pop('description')
-            self.fast_advance.get_desc = self.get_desc
         if not initial and kw.get('description') is None and self.get_desc is not None and arg is not ...:
             kw['description'] = self.get_desc(arg, i)
         if kw.get('description') is not None:
@@ -423,48 +509,3 @@ class mqdm:
         if kw:
             self.runtime.pbar.update_(self.task_id, **kw)
         return self
-
-
-class _speed_increment:
-    """Increment the progress bar in a very fast loop.
-    Saves time by reducing inter-process IO.
-    """
-    __slots__ = ('n', 't', 'delta', 'get_desc', 'task_id', 'runtime')
-    def __init__(self, runtime, delta=0):
-        self.delta = delta
-        self.n = 0
-        self.t = 0
-        self.get_desc = None
-        self.task_id = None
-        self.runtime = runtime
-
-    def __call__(self, n: int=1, arg=..., i=...):
-        self.n += n
-        # If the time since the last increment is less than some delta, increment a local counter
-        # The only time this fails is if the iterations are highly irregular 
-        # (e.g. a bunch of 1000fps followed by a 100 second iteration
-        #       - could happen with overwrite=False type scenarios)
-        t = monotonic()
-        if t - self.t < self.delta:
-            return
-        self.t = t
-
-        self.flush(arg, i)
-
-    def flush(self, arg=..., i=...):
-        """Flush the local counter to the progress bar."""
-        task_id = self.task_id
-        if task_id is None:
-            return
-        pbar = self.runtime.pbar
-        if pbar is None:
-            return
-        kw = {}
-        if i is not ...:
-            get_desc = self.get_desc
-            if get_desc is not None:
-                desc = get_desc(arg, i)
-                if desc is not None:
-                    kw['description'] = desc
-        pbar.update_(task_id, advance=self.n, **kw)
-        self.n = 0
