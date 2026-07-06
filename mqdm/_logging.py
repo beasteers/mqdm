@@ -56,6 +56,15 @@ class MQDMHandler(logging.Handler):
             logger.removeHandler(handler)
             runtime.logging_handlers.discard(handler)
 
+    @classmethod
+    def remove_from_all_loggers(cls, runtime: M.Runtime) -> None:
+        """Remove all MQDMHandlers for a runtime from every known logger."""
+        root = logging.getLogger()
+        cls.remove_from_logger(root, runtime)
+        for logger in root.manager.loggerDict.values():
+            if isinstance(logger, logging.Logger):
+                cls.remove_from_logger(logger, runtime)
+
 
 def _make_default_formatter() -> logging.Formatter:
     return logging.Formatter(
@@ -125,4 +134,3 @@ def release_warnings(runtime=None) -> None:
     runtime.capture_warnings = False
     cfg = runtime.logging_config or {}
     runtime.logging_config = {**cfg, "capture_warnings": False}
-

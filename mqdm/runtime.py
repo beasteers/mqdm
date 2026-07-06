@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
 
 class LoggingConfig(TypedDict, total=False):
+    logger_name: str
     level: int | None
     markup: bool
     capture_warnings: WarningCapturePolicy
@@ -102,8 +103,9 @@ class Runtime:
     def install_pool_worker(self) -> None:
         cfg = self.logging_config
         if cfg:
+            logger_name = cfg.get("logger_name", "root")
             self.install_logging(
-                logger=None,
+                logger=logging.getLogger(logger_name),
                 level=cfg.get("level"),
                 capture_warnings=cfg.get("capture_warnings", "process"),
                 markup=cfg.get("markup", True),
@@ -258,6 +260,7 @@ class Runtime:
         logger = logger or logging.getLogger()
         handler = MQDMHandler.ensure_on_logger(logger, self, formatter=formatter, markup=markup)
         if level is not None:
+            logger.setLevel(level)
             handler.setLevel(level)
 
         if capture_warnings is True:
@@ -268,6 +271,7 @@ class Runtime:
             _release_warnings(runtime=self)
 
         self.logging_config = {
+            "logger_name": logger.name,
             "level": level,
             "markup": markup,
             "capture_warnings": capture_warnings,
@@ -284,8 +288,10 @@ class Runtime:
         """
         from ._logging import MQDMHandler, release_warnings as _release_warnings
 
-        logger = logger or logging.getLogger()
-        MQDMHandler.remove_from_logger(logger, self)
+        if logger is None:
+            MQDMHandler.remove_from_all_loggers(self)
+        else:
+            MQDMHandler.remove_from_logger(logger, self)
         if self.capture_warnings:
             _release_warnings(runtime=self)
         self.logging_config = None
