@@ -287,6 +287,24 @@ def example_messy(n=3, transient=False, n_workers=5, **kw):
     # M.pbar.stop()
 
 
+def warnings_fn(n, sleep=1):
+    for i in mqdm(range(10), desc='example', transient=False):
+        time.sleep(0.1)
+        if i == 5:
+            import warnings
+            warnings.warn("This is a warning message.")
+
+
+def example_warnings(pool_mode='process', n_workers=3):
+    M.install_logging()
+    pool(
+        warnings_fn,
+        range(3), 
+        '[bold blue]Very important work with warnings',
+        pool_mode=pool_mode,
+        n_workers=n_workers,
+    )
+
 def main():
     example_prompt()
     example_group()

@@ -53,7 +53,7 @@ def pause(paused=True):
 # ---------------------------------- Logging --------------------------------- #
 
 
-def install_logging(logger=None, *, level=None, capture_warnings=False, markup=True, formatter=None, runtime=None):
+def install_logging(logger=None, *, level=None, capture_warnings='process', markup=True, formatter=None, runtime=None):
     """Install an MQDMHandler on a logger for a runtime."""
     runtime = runtime or _current_runtime()
     return runtime.install_logging(
@@ -74,7 +74,7 @@ def uninstall_logging(*, logger=None, runtime=None):
 
 from .executor import T_POOL_MODE, executor
 from .utils import args, fn, fopen, ratelimit
-from ._logging import _install_from_config, capture_warnings, release_warnings
+from ._logging import MQDMHandler
 
 # ----------------------------------- Core ----------------------------------- #
 

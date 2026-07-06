@@ -1,9 +1,8 @@
 import logging
 import warnings
+from typing import Any, Callable
 
 import mqdm as M
-
-_warning_capture_refcount = 0
 
 
 class MQDMHandler(logging.Handler):
@@ -65,21 +64,47 @@ def _make_default_formatter() -> logging.Formatter:
     )
 
 
+# ---------------------------------------------------------------------------- #
+#                                   Warnings                                   #
+# ---------------------------------------------------------------------------- #
+
+
+_warning_capture_refcount = 0
+_warnings_showwarning: Callable[..., Any] | None = None
+
+
 def _acquire_warning_capture() -> None:
+    global _warnings_showwarning
     global _warning_capture_refcount
     if _warning_capture_refcount == 0:
         warnings.simplefilter("default")
-        logging.captureWarnings(True)
+        if _warnings_showwarning is None:
+            _warnings_showwarning = warnings.showwarning
+        warnings.showwarning = _showwarning
     _warning_capture_refcount += 1
 
 
 def _release_warning_capture() -> None:
+    global _warnings_showwarning
     global _warning_capture_refcount
     if _warning_capture_refcount == 0:
         return
     _warning_capture_refcount -= 1
     if _warning_capture_refcount == 0:
-        logging.captureWarnings(False)
+        if _warnings_showwarning is not None:
+            warnings.showwarning = _warnings_showwarning
+            _warnings_showwarning = None
+
+
+def _showwarning(message, category, filename, lineno, file=None, line=None) -> None:
+    if file is not None:
+        if _warnings_showwarning is not None:
+            _warnings_showwarning(message, category, filename, lineno, file, line)
+        return
+
+    rendered = warnings.formatwarning(message, category, filename, lineno, line)
+    logger = logging.getLogger("py.warnings")
+    logger.warning("%s", rendered)
 
 
 def capture_warnings(runtime=None) -> None:
@@ -101,15 +126,3 @@ def release_warnings(runtime=None) -> None:
     cfg = runtime.logging_config or {}
     runtime.logging_config = {**cfg, "capture_warnings": False}
 
-def _install_from_config(cfg: dict | None) -> None:
-    """Internal: install handler in workers using stored runtime logging config."""
-    if not cfg:
-        return
-    M._current_runtime().install_logging(
-        logger=None,
-        level=cfg.get("level"),
-        capture_warnings=cfg.get("capture_warnings", False),
-        markup=cfg.get("markup", True),
-        formatter=logging.Formatter(cfg["formatter_fmt"], cfg.get("formatter_datefmt")) 
-                  if cfg.get("formatter_fmt") else None,
-    )

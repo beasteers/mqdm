@@ -6,7 +6,7 @@ import threading
 import weakref
 from collections import OrderedDict
 from time import monotonic
-from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypedDict
 
 import rich
 from rich import progress
@@ -27,12 +27,13 @@ if TYPE_CHECKING:
 class LoggingConfig(TypedDict, total=False):
     level: int | None
     markup: bool
-    capture_warnings: bool
+    capture_warnings: WarningCapturePolicy
     formatter_fmt: str | None
     formatter_datefmt: str | None
 
 
 ProgressLike: TypeAlias = "Progress | ProgressProxy"
+WarningCapturePolicy: TypeAlias = "bool | Literal['process']"
 
 
 _all_runtimes: weakref.WeakSet[Runtime] = weakref.WeakSet()
@@ -70,6 +71,8 @@ class Runtime:
         state['manager'] = None
         state['instances'] = OrderedDict()
         state['logging_handlers'] = None
+        # Warning capture is process-local state and must be reinstalled in workers.
+        state['capture_warnings'] = False
         for key in ('pause_event', 'shutdown_event'):
             event = state.get(key)
             if isinstance(event, _LOCAL_EVENT_TYPE):
@@ -97,12 +100,19 @@ class Runtime:
         self.shutdown_event.set()
 
     def install_pool_worker(self) -> None:
-        try:
-            from ._logging import _install_from_config
-
-            _install_from_config(self.logging_config)
-        except Exception:
-            pass
+        cfg = self.logging_config
+        if cfg:
+            self.install_logging(
+                logger=None,
+                level=cfg.get("level"),
+                capture_warnings=cfg.get("capture_warnings", "process"),
+                markup=cfg.get("markup", True),
+                formatter=(
+                    logging.Formatter(cfg["formatter_fmt"], cfg.get("formatter_datefmt"))
+                    if cfg.get("formatter_fmt")
+                    else None
+                ),
+            )
 
     def new_pbar(self, pool_mode: T_POOL_MODE = None, bytes: bool = False, **kw: Any) -> ProgressLike:
         from . import proxy
@@ -224,7 +234,7 @@ class Runtime:
         logger: Logger | None = None,
         *,
         level: int | None = None,
-        capture_warnings: bool = False,
+        capture_warnings: WarningCapturePolicy = 'process',
         markup: bool = True,
         formatter: Formatter | None = None,
     ) -> MQDMHandler:
@@ -233,8 +243,10 @@ class Runtime:
         Args:
             logger: Logger to attach to. Defaults to the root logger.
             level: Optional handler level to set on the attached handler.
-            capture_warnings: Whether to route Python warnings through logging
-                for this runtime.
+            capture_warnings: Warning routing policy. ``False`` leaves warnings
+                alone, ``True`` captures warnings immediately, and
+                ``"process"`` captures warnings automatically only in process
+                pool workers installed by mqdm.
             markup: Whether to allow Rich markup in emitted log messages.
             formatter: Optional formatter for the handler.
 
@@ -248,7 +260,9 @@ class Runtime:
         if level is not None:
             handler.setLevel(level)
 
-        if capture_warnings:
+        if capture_warnings is True:
+            _capture_warnings(runtime=self)
+        elif capture_warnings == 'process' and not utils.is_main_process():
             _capture_warnings(runtime=self)
         else:
             _release_warnings(runtime=self)

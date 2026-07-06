@@ -186,17 +186,12 @@ Route Python logging through the progress-friendly console so bars don't break:
 ```python
 import logging
 import mqdm
-from mqdm import capture_warnings
 
 runtime = mqdm._current_runtime()
 runtime.install_logging(level=logging.INFO)
 
-
 log = logging.getLogger(__name__)
 log.info("hello")
-
-# Warning capture is a separate opt-in because it changes global state.
-capture_warnings()
 
 
 def work(n, sleep=0.05):
@@ -207,6 +202,11 @@ def work(n, sleep=0.05):
 results = pool(work, range(1, 8), n_workers=3)
 
 ```
+
+`install_logging()` also protects process-pool workers from raw `warnings.warn(...)`
+output by default, so worker warnings are routed through the same progress-safe
+logging path without extra setup. Sequential and thread-mode warnings are left
+alone unless you explicitly opt into warning capture.
 
 
 
