@@ -96,6 +96,22 @@ def test_ipool_threaded_ordered_mode_buffers_completed_results():
     assert results == [0, 1, 2]
 
 
+def test_ipool_threaded_ordered_cancel_raises_before_slow_prior_task_finishes():
+    def work(x):
+        if x == 0:
+            time.sleep(0.2)
+            return x
+        if x == 1:
+            raise ValueError("boom")
+        return x
+
+    start = time.monotonic()
+    with pytest.raises(ValueError, match="boom"):
+        list(M.ipool(work, [0, 1], pool_mode='thread', n_workers=2, ordered_=True, on_error='cancel'))
+
+    assert time.monotonic() - start < 0.15
+
+
 def test_mqdm_restores_from_task_dict():
     bar = M.mqdm(
         task_id={

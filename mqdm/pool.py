@@ -87,7 +87,11 @@ def ipool(
     remote_exceptions = {}
     try:
         with mqdm(desc=plan.desc, elapsed_speed=True, runtime=plan.runtime, **plan.bar_kw) as pbar:
-            with M.executor(plan.pool_mode, bar_kw=plan.worker_bar_kw, max_workers=plan.n_workers, runtime=plan.runtime) as executor:
+            executor = M.executor(plan.pool_mode, bar_kw=plan.worker_bar_kw, max_workers=plan.n_workers, runtime=plan.runtime)
+            shutdown_wait = True
+            shutdown_cancel_futures = False
+            executor.__enter__()
+            try:
                 try:
                     indexed_iter = enumerate(plan.iterable)
                     in_flight = {}
@@ -106,6 +110,13 @@ def ipool(
                         outcome = _task_outcome(task)
                         pbar.update(arg=outcome.task.display_arg, i=outcome.task.index)
 
+                        if not outcome.succeeded and plan.on_error == 'cancel':
+                            _add_func_args_str_to_exception(outcome.error, plan.fn, outcome.task.display_arg)
+                            _cancel_pending(list(in_flight.values()), executor)
+                            shutdown_wait = False
+                            shutdown_cancel_futures = True
+                            raise outcome.error
+
                         if plan.ordered:
                             ready[task.index] = outcome
                             while next_index in ready:
@@ -118,10 +129,6 @@ def ipool(
                                     _add_func_args_str_to_exception(outcome.error, plan.fn, outcome.task.display_arg)
                                     plan.runtime.print(''.join(traceback.format_exception(type(outcome.error), outcome.error, outcome.error.__traceback__)))
                                     continue
-                                if plan.on_error == 'cancel':
-                                    _add_func_args_str_to_exception(outcome.error, plan.fn, outcome.task.display_arg)
-                                    _cancel_pending(list(in_flight.values()), executor)
-                                    raise outcome.error
                                 _append_remote_exception(remote_exceptions, outcome.error, plan.fn, outcome.task.display_arg)
                         else:
                             if outcome.succeeded:
@@ -129,10 +136,6 @@ def ipool(
                             elif plan.on_error == 'skip':
                                 _add_func_args_str_to_exception(outcome.error, plan.fn, outcome.task.display_arg)
                                 plan.runtime.print(''.join(traceback.format_exception(type(outcome.error), outcome.error, outcome.error.__traceback__)))
-                            elif plan.on_error == 'cancel':
-                                _add_func_args_str_to_exception(outcome.error, plan.fn, outcome.task.display_arg)
-                                _cancel_pending(list(in_flight.values()), executor)
-                                raise outcome.error
                             else:
                                 _append_remote_exception(remote_exceptions, outcome.error, plan.fn, outcome.task.display_arg)
 
@@ -144,7 +147,11 @@ def ipool(
                 except KeyboardInterrupt:
                     plan.runtime.pause()
                     _shutdown_for_interrupt(executor, plan.pool_mode, plan.runtime)
+                    shutdown_wait = False
+                    shutdown_cancel_futures = True
                     raise
+            finally:
+                executor.shutdown(wait=shutdown_wait, cancel_futures=shutdown_cancel_futures)
     except:
         plan.runtime.pause()
         raise
