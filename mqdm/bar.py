@@ -207,6 +207,7 @@ class mqdm:
     def __getstate__(self):
         state = self.__dict__.copy()
         state['get_desc'] = None  # cannot pickle lambda functions
+        state['fast_advance'] = None  # cannot pickle closures
         # state['_items'] = None  # cannot pickle iterators
         state['_iter'] = None  # cannot pickle iterators
         return state
@@ -223,7 +224,7 @@ class mqdm:
         return self._total or 0
 
     def __iter__(self) -> 'mqdm':
-        return self
+        return self._iter
 
     def __next__(self):
         return next(self._iter)
@@ -256,19 +257,20 @@ class mqdm:
     def _get_fast_advance(self):
         D = self.__dict__
         disable = self.disable
-        ttl_pause_wait = self.runtime.ttl_pause_wait
+        ttl_pause_wait = utils.fn_throttle(self.runtime.pause_event.wait, self.runtime.pause_wait_ttl_seconds)
         delta = 1 / (self._progress_kw['refresh_per_second'] or 8)
         runtime = self.runtime
         task_id = self.task_id
         get_desc = self.get_desc
 
+        def disabled_update(x=..., n=1, flush=False, wait=True):
+            D['_n'] += n
+            return
+
         n_acc = 0
         t_last = 0
         def update(x=..., n=1, flush=False, wait=True):
-            nonlocal t_last, n_acc
-            if disable:
-                D['_n'] += n
-                return
+            nonlocal n_acc
             n_acc += n
 
             # If the time since the last increment is less than some delta, increment a local counter
@@ -277,22 +279,32 @@ class mqdm:
             #       - could happen with overwrite=False type scenarios)
             t = monotonic()
             if t - t_last >= delta or flush:
-                D['_n'] += n_acc
-                kw = {}
-                if x is not ...:
-                    if get_desc is not None:
-                        desc = get_desc(x, D['_n']-1)
-                        if desc is not None:
-                            kw['description'] = desc
-                    
-                runtime.pbar.update_(task_id, advance=n_acc, **kw)
+                do_flush(t, x, wait)
+
+        def do_flush(t, x, wait):
+            nonlocal t_last, n_acc
+            D['_n'] += n_acc
+
+            pbar = runtime.pbar
+            if pbar is not None:
+                pbar.update_(
+                    task_id, advance=n_acc, 
+                    description=get_desc(x, D['_n']-1) if x is not ... and get_desc is not None else None
+                )
                 if wait:
                     ttl_pause_wait()
+            else:
+                task = self._task_dict
+                if task is not None:
+                    task['completed'] = D['_n']
+                    if x is not ... and get_desc is not None:
+                        task['description'] = get_desc(x, D['_n']-1)
 
-                n_acc = 0
-                t_last = t
+            n_acc = 0
+            t_last = t
 
-        return update
+        # return update
+        return disabled_update if disable else update
     
     def _reset_fast_advance(self):
         if self.fast_advance is not None:
@@ -301,20 +313,21 @@ class mqdm:
         return self.fast_advance
 
     def _get_iter(self, it):
-        update = self._reset_fast_advance()
-        it = iter(it)
-        try:
-            x = next(it)
-            update(x, 1, flush=True)
-            yield x
-        except StopIteration:
-            update(..., 0, flush=True)
-            return 
+        with utils.noopcontext() if self.entered else self:
+            update = self._reset_fast_advance()
+            it = iter(it)
+            try:
+                x = next(it)
+                update(x, 1, flush=True)
+                yield x
+            except StopIteration:
+                update(..., 0, flush=True)
+                return 
 
-        for x in it:
-            update(x, 1)
-            yield x
-        update(x, 0, flush=True)
+            for x in it:
+                update(x, 1)
+                yield x
+            update(x, 0, flush=True)
 
     def __call__(self, iter, desc=None, total=None, **kw) -> 'mqdm':
         """Iterate over an iterable with a progress bar."""
@@ -331,13 +344,7 @@ class mqdm:
 
         total = utils.try_len(iter, self._total) if total is None else total
         self.update(0, total=total, description=desc, **kw)
-        def _with_iter():
-            if self.entered:  # already called __enter__, don't call __exit__() when leaving
-                yield from self._get_iter(iter)
-                return
-            with self:  # call __enter__() and __exit__()
-                yield from self._get_iter(iter)
-        self._iter = _with_iter()
+        self._iter = self._get_iter(iter)
         return self
     
     # ------------------------------ Internal methods ----------------------------- #
@@ -456,7 +463,7 @@ class mqdm:
 
     def set_description(self, desc) -> 'mqdm':
         """Set the description of the progress bar."""
-        return self.update(0, description=desc)
+        return self.set(description=desc)
 
     def update(self, advance: int=1, **kw) -> 'mqdm':
         """Increment the progress bar."""

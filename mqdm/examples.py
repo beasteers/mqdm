@@ -217,26 +217,24 @@ def example_tqdm_speed(t=10, transient=False, **kw):
     print("done in", time.time() - t0, "seconds", 123)
 
 @M.profile
-def example_mqdm_fps(t=10, N=1000000000, **kw):
-    import time
-    t0 = time.time()
-    for i in mqdm(range(N), refresh_per_second=8):
-        if time.time() - t0 > t:
+def example_mqdm_fps(t=20, N=1000000000, **kw):
+    from time import time
+    t0 = time()
+    for i in mqdm(range(N)):
+        if time() - t0 > t:
             break
-    
-    print("done", i, "in", time.time() - t0, "seconds", 123)
+    print(f"done {i:,}, {i / (time() - t0):,} it/s")
 
 
 @M.profile
-def example_tqdm_fps(t=10, N=1000000000, **kw):
+def example_tqdm_fps(t=20, N=1000000000, **kw):
     from tqdm import tqdm
-    import time
-    t0 = time.time()
+    from time import time
+    t0 = time()
     for i in tqdm(range(N)):
-        if time.time() - t0 > t:
+        if time() - t0 > t:
             break
-    
-    print("done", i, "in", time.time() - t0, "seconds", 123)
+    print(f"done {i:,}, {i / (time() - t0):,} it/s")
 
 
 

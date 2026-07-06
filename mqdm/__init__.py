@@ -1,6 +1,7 @@
 import atexit
 import threading
 import time
+from time import monotonic
 import weakref
 from collections import OrderedDict
 from contextlib import contextmanager
@@ -14,6 +15,7 @@ from . import progress_columns
 
 
 _all_runtimes = weakref.WeakSet()
+_LOCAL_EVENT_TYPE = type(threading.Event())
 
 
 class Runtime:
@@ -39,12 +41,23 @@ class Runtime:
         state['manager'] = None
         state['instances'] = OrderedDict()
         state['logging_handlers'] = None
+        for key in ('pause_event', 'shutdown_event'):
+            event = state.get(key)
+            if isinstance(event, _LOCAL_EVENT_TYPE):
+                state[f'{key}_is_set'] = event.is_set()
+                state[key] = None
         return state
 
     def __setstate__(self, state):
+        pause_event_is_set = state.pop('pause_event_is_set', True)
+        shutdown_event_is_set = state.pop('shutdown_event_is_set', True)
         self.__dict__.update(state)
-        self.pause_event.set()
-        self.shutdown_event.set()
+        if self.pause_event is None:
+            self.pause_event = threading.Event()
+            (self.pause_event.set if pause_event_is_set else self.pause_event.clear)()
+        if self.shutdown_event is None:
+            self.shutdown_event = threading.Event()
+            (self.shutdown_event.set if shutdown_event_is_set else self.shutdown_event.clear)()
         self.instances = OrderedDict()
         self.logging_handlers = weakref.WeakSet()
         _all_runtimes.add(self)
@@ -138,7 +151,7 @@ class Runtime:
         self.pause_event.wait()
 
     def ttl_pause_wait(self):
-        now = time.monotonic()
+        now = monotonic()
         if now >= self.next_pause_check_time:
             self.next_pause_check_time = now + self.pause_wait_ttl_seconds
             self.pause_event.wait()
@@ -172,8 +185,9 @@ class Runtime:
             return self.manager
         from .proxy import MqdmManager
 
-        self.manager = manager = MqdmManager()
+        manager = MqdmManager()
         manager.start()
+        self.manager = manager
         self.pause_event = manager.Event()
         self.pause_event.set()
         self.shutdown_event = manager.Event()
@@ -185,7 +199,9 @@ class Runtime:
         if manager is None:
             return
         try:
-            manager.shutdown()
+            shutdown = getattr(manager, 'shutdown', None)
+            if shutdown is not None:
+                shutdown()
         finally:
             self.manager = None
 

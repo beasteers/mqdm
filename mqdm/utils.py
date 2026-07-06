@@ -1,5 +1,6 @@
 import os
 import time
+from time import monotonic
 import multiprocessing as mp
 import mqdm as M
 
@@ -162,3 +163,27 @@ def ratelimit(iter, seconds):
             time.sleep(dt)
         lag = max(-dt, 0)
         t0 = t + max(0, dt)
+
+
+def fn_throttle(fn, seconds):
+    """Limit the rate of a function call."""
+    if seconds is None:
+        return fn
+    next_call_time = 0
+    def wrapper(*a, **kw):
+        nonlocal next_call_time
+        now = monotonic()
+        if now >= next_call_time:
+            next_call_time = now + seconds
+            fn(*a, **kw)
+
+    return wrapper
+
+
+class noopcontext:
+    """A no-op context manager."""
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass

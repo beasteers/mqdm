@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 import mqdm as M
+from mqdm import proxy as proxy_mod
 from mqdm.proxy import Progress
 
 
@@ -64,3 +65,16 @@ def test_load_task_advances_task_index():
 
     assert new_task_id == 8
 
+
+def test_runtime_get_manager_failure_does_not_poison_runtime(monkeypatch):
+    runtime = M.Runtime()
+
+    def fail_start(self):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(proxy_mod.MqdmManager, "start", fail_start)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        runtime.get_manager()
+
+    assert runtime.manager is None

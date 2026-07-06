@@ -1,4 +1,5 @@
 import mqdm as M
+import pickle
 import pytest
 
 
@@ -113,6 +114,29 @@ def test_mqdm_can_use_custom_runtime():
         bar.close()
 
     assert runtime.pbar is None
+
+
+def test_runtime_is_pickleable():
+    runtime = M.Runtime()
+
+    restored = pickle.loads(pickle.dumps(runtime))
+
+    assert isinstance(restored, M.Runtime)
+    assert restored.manager is None
+    assert not restored.instances
+    assert restored.pause_event.is_set()
+    assert restored.shutdown_event.is_set()
+
+
+def test_disabled_mqdm_is_pickleable():
+    bar = M.mqdm("hello", disable=True)
+
+    restored = pickle.loads(pickle.dumps(bar))
+
+    assert restored.disable is True
+    assert restored._desc == "hello"
+    assert restored._iter is None
+    assert restored.fast_advance is None
 
 
 @pytest.mark.parametrize(('pool_mode', 'fn', 'expected', 'n_workers', 'squeeze'), [
