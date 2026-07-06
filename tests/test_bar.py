@@ -64,3 +64,43 @@ def test_bar_open_close_tracks_runtime_instances():
         assert runtime.get_instance() is bar
     finally:
         bar.close()
+
+
+def test_bar_close_flushes_buffered_fast_advance():
+    runtime = M.Runtime()
+    bar = M.mqdm(total=5, runtime=runtime, refresh_per_second=0.1)
+
+    try:
+        bar.fast_advance(n=1, flush=True)
+        bar.fast_advance(n=2)
+
+        assert runtime.pbar.dump_task(bar.task_id)["completed"] == 1
+
+        bar.close()
+
+        assert bar._task_dict["completed"] == 3
+
+        bar.open()
+
+        restored = runtime.pbar.dump_task(bar.task_id)
+        assert restored["completed"] == 3
+    finally:
+        bar.close()
+
+
+def test_bar_close_flush_does_not_wait_on_pause():
+    runtime = M.Runtime()
+    bar = M.mqdm(total=5, runtime=runtime, refresh_per_second=0.1)
+
+    try:
+        bar.fast_advance(n=2)
+
+        def fail():
+            raise AssertionError("close flush should not wait on pause state")
+
+        runtime.ttl_pause_wait = fail
+        bar.close()
+
+        assert bar._task_dict["completed"] == 2
+    finally:
+        bar.close()

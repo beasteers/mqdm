@@ -1,6 +1,7 @@
 import importlib
 import sys
 import mqdm
+import pytest
 from mqdm import utils
 executor_mod = importlib.import_module('mqdm.executor')
 
@@ -49,6 +50,25 @@ def test_fopen_iterates_lines(tmp_path):
             lines.append(line)
 
     assert ''.join(lines) == 'a\nbb\nccc\n'
+
+
+def test_fopen_flushes_final_buffer_with_external_bar(tmp_path):
+    p = tmp_path / 'data.txt'
+    p.write_text('abc\n')
+
+    runtime = mqdm.Runtime()
+    bar = mqdm.mqdm(total=0, runtime=runtime, init_kw={'bytes': True}, refresh_per_second=0.1)
+
+    try:
+        bar.open()
+        with utils.fopen(p, 'r', pbar=bar) as f:
+            assert next(f) == 'abc\n'
+            with pytest.raises(StopIteration):
+                next(f)
+
+        assert runtime.pbar.dump_task(bar.task_id)['completed'] == p.stat().st_size
+    finally:
+        bar.close()
 
 
 def test_process_pool_compat_flag_matches_python_version():

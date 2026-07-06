@@ -33,6 +33,7 @@ class mqdm:
     get_desc = None          # a function to get the description
     disable = False          # whether to disable the progress bar
     runtime: Runtime = None  # runtime that owns this bar's state
+    fast_advance = None         # a function to update the progress bar in fast loops
 
     def __init__(
             self, 
@@ -96,7 +97,7 @@ class mqdm:
             **fields,
         )
         self.started = start
-        self.fast_advance = self._get_fast_advance()
+        self._reset_fast_advance()
 
         self(it, desc=..., **bind_kw)  # bind iterable and update progress bar
 
@@ -263,7 +264,7 @@ class mqdm:
 
         n_acc = 0
         t_last = 0
-        def update(x=..., n=1, flush=False):
+        def update(x=..., n=1, flush=False, wait=True):
             nonlocal t_last, n_acc
             if disable:
                 D['_n'] += n
@@ -285,7 +286,8 @@ class mqdm:
                             kw['description'] = desc
                     
                 pbar.update_(task_id, advance=n_acc, **kw)
-                ttl_pause_wait()
+                if wait:
+                    ttl_pause_wait()
 
                 n_acc = 0
                 t_last = t
@@ -294,12 +296,12 @@ class mqdm:
     
     def _reset_fast_advance(self):
         if self.fast_advance is not None:
-            self.fast_advance(n=0, flush=True)
+            self.fast_advance(n=0, flush=True, wait=False)
         self.fast_advance = self._get_fast_advance()
+        return self.fast_advance
 
     def _get_iter(self, it):
-        self._reset_fast_advance()
-        update = self.fast_advance
+        update = self._reset_fast_advance()
         it = iter(it)
         try:
             x = next(it)
@@ -350,12 +352,15 @@ class mqdm:
             pbar.load_task(self._task_dict)
             self._task_dict = None
         self.set(total=self._total)
+        self._reset_fast_advance()
 
     def _detach(self, remove=None, soft=False):
         """Detach from the live task while preserving local task state."""
         pbar = self.runtime.pbar
         if self.disable or pbar is None: return
 
+        if self.fast_advance is not None:
+            self.fast_advance(n=0, flush=True, wait=False)
         if self._task_dict is None:
             self._task_dict = pbar.pop_task(self.task_id, remove=remove)
         self.runtime.remove_instance(self)

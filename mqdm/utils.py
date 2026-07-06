@@ -107,7 +107,7 @@ class fopen:
             pbar = M.mqdm(init_kw={'bytes': True}, **kw)
         self.pbar = pbar
         self._pbar_managed = not pbar.entered
-        pbar.update(total=self.total)
+        pbar.set(total=self.total)
         
     def __enter__(self):
         self.fd.__enter__()
@@ -124,8 +124,12 @@ class fopen:
         return self
 
     def __next__(self):
-        line = next(self.fd)
-        self.pbar.fast_advance(len(line))
+        try:
+            line = next(self.fd)
+        except StopIteration:
+            self.pbar.fast_advance(n=0, flush=True, wait=False)
+            raise
+        self.pbar.fast_advance(n=len(line))
         return line
 
     def __getattr__(self, name):
