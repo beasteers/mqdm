@@ -1,4 +1,12 @@
 import mqdm as M
+import pytest
+
+
+def _runtime_worker(x):
+    runtime_is_custom = M._current_runtime() is not M._runtime
+    for _ in M.mqdm(range(1), disable=True):
+        pass
+    return runtime_is_custom, x + 1
 
 
 def test_mqdm_string_argument_sets_description():
@@ -83,4 +91,25 @@ def test_ipool_can_use_custom_runtime():
     results = list(M.ipool(lambda x: x + 1, [1, 2], runtime=runtime, pool_mode='sequential', n_workers=1))
 
     assert results == [2, 3]
+    assert runtime.pbar is None
+
+
+def test_ipool_thread_mode_propagates_custom_runtime():
+    runtime = M.Runtime()
+
+    results = list(M.ipool(_runtime_worker, [1, 2], runtime=runtime, pool_mode='thread', n_workers=2, squeeze_=False))
+
+    assert results == [(True, 2), (True, 3)]
+    assert runtime.pbar is None
+
+
+def test_ipool_process_mode_propagates_custom_runtime():
+    runtime = M.Runtime()
+
+    try:
+        results = list(M.ipool(_runtime_worker, [1, 2], runtime=runtime, pool_mode='process', n_workers=2, squeeze_=False))
+    except (EOFError, PermissionError, OSError) as exc:
+        pytest.skip(f"process-mode runtime propagation unavailable in this environment: {exc}")
+
+    assert sorted(results) == [(True, 2), (True, 3)]
     assert runtime.pbar is None
