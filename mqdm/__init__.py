@@ -193,7 +193,8 @@ class _pause_exit:
 # ---------------------------------------------------------------------------- #
 
 
-from .bar import mqdm, pool, ipool
+from .bar import mqdm
+from .pool import pool, ipool
 from ._logging import install as install_logging, uninstall as uninstall_logging
 
 
