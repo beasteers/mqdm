@@ -1,4 +1,5 @@
 ''''''
+import builtins
 import time
 import sys
 from functools import wraps
@@ -70,7 +71,7 @@ class mqdm:
             bytes: bool = False,
             **fields,
         ):
-        if isinstance(iter, str) and desc is None:  # infer string as description
+        if isinstance(it, str) and desc is None:  # infer string as description
             it, desc = None, it
 
         # if disable is not None:
@@ -118,11 +119,11 @@ class mqdm:
                 # else:
                 task_id = pbar.add_task(**init_kw)
             else:
-                kw = {**init_kw, **kw}
                 if isinstance(task_id, dict):
-                    self._task_dict = task_id
+                    self._task_dict = task_dict = task_id
                     task_id = task_id['id']
                 else:
+                    kw = {**init_kw, **kw}
                     try:
                         task_dict = pbar.dump_task(task_id) or {}
                     except KeyError:
@@ -218,7 +219,11 @@ class mqdm:
         if isinstance(iter, str) and desc is None:  # infer string as description
             iter, desc = None, iter
         if iter is None:  # no iterable yet
-            return self.update(0, total=total, **kw)
+            if total is not None:
+                kw['total'] = total
+            if desc not in (None, ...):
+                kw['description'] = desc
+            return self.update(0, **kw)
         if isinstance(iter, int):  # implicit range
             iter = range(iter)
 
@@ -449,7 +454,7 @@ def ipool(
 
     # if the iterable is a single item, just run the function
     if squeeze_ and n == 1:
-        arg = utils.args.from_item(iter[0], **kw)
+        arg = utils.args.from_item(next(builtins.iter(iter)), **kw)
         yield arg(fn)
         return
 

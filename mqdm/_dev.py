@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import sys
 import time
 import functools
@@ -105,9 +106,26 @@ def iex(func):
     return outer
 
 
+class cm:
+    def __init__(self, func, wrapper):
+        self.func = func
+        self.wrapper = contextmanager(wrapper)
+        self._ctx = None
+
+    def __enter__(self):
+        self._ctx = self.wrapper().__enter__()
+        return self._ctx
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return self._ctx.__exit__(exc_type, exc_val, exc_tb)
+    def __call__(self, *a, **kw):
+        with self.wrapper():
+            return self.func(*a, **kw)
+
+
+
 def profile(func=None, **pkw):
     """Decorator to profile a function using pyinstrument."""
-    profiler_kw = {k: pkw.pop(k) for k in ['interval', 'use_timing_thread', 'async_mode'] if k in pkw}
+    profiler_kw = {**profile.kw, **{k: pkw.pop(k) for k in ['interval', 'use_timing_thread', 'async_mode'] if k in pkw}}
     def wrapper(func):
         @functools.wraps(func)
         def outer(*a, **kw):
@@ -122,6 +140,7 @@ def profile(func=None, **pkw):
                 p.print(**pkw)
         return outer
     return wrapper(func) if func is not None else wrapper
+profile.kw = {}
 
 
 def timeit(func=None, **pkw):
