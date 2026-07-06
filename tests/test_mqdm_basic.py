@@ -82,6 +82,25 @@ def test_mqdm_restores_from_task_dict():
         bar.close()
 
 
+def test_mqdm_restores_from_task_dict_when_disabled():
+    bar = M.mqdm(
+        task_id={
+            'id': 7,
+            'description': 'restored',
+            'total': 9,
+            'completed': 4,
+            'start_time': 1.0,
+        },
+        disable=True,
+    )
+
+    assert bar.task_id == 7
+    assert bar.n == 4
+    assert bar.total == 9
+    assert bar._desc == 'restored'
+    assert bar._task_dict['id'] == 7
+
+
 def test_mqdm_can_use_custom_runtime():
     runtime = M.Runtime()
     bar = M.mqdm(total=2, runtime=runtime)

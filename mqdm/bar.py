@@ -149,8 +149,18 @@ class mqdm:
         })
 
         if self.disable:
-            self.task_id = task_id
-            self.fast_advance.task_id = task_id
+            if task_id is None:
+                self.task_id = None
+            elif isinstance(task_id, dict):
+                self._task_dict = task_id
+                self.task_id = task_id['id']
+                self._n = task_id.get('completed', 0)
+                self._total = task_id.get('total')
+                self._desc = task_id.get('description')
+                start = bool(task_id.get('start_time', start))
+            else:
+                self.task_id = task_id
+            self.fast_advance.task_id = self.task_id
             return start, bind_kw
 
         pbar = self.runtime.get_pbar(pool_mode=pool_mode, **self._progress_kw)
