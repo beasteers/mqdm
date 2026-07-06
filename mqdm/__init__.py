@@ -1,115 +1,181 @@
+import atexit
+import threading
 import time
+import weakref
+from collections import OrderedDict
 from contextlib import contextmanager
 
 import rich
 from rich import progress
 
-
 import mqdm as M  # self
-from . import proxy
 from . import utils
-# from .executor import SequentialExecutor, ProcessPoolExecutor, ThreadPoolExecutor, Executor
-from .executor import executor, T_POOL_MODE, Initializer
-from ._dev import embed, inp, bp, iex, profile, timeit
-from .utils import args, fn, fopen, ratelimit
-M.input = inp
-
-_logging_config: dict|None = None
-_manager: 'proxy.MqdmManager' = None
-_instances: 'list[M.mqdm]' = []
-_keep = False
-pbar: 'proxy.Progress|proxy.ProgressProxy' = None
 
 
-# ---------------------------------------------------------------------------- #
-#                               Progress methods                               #
-# ---------------------------------------------------------------------------- #
+class Runtime:
+    def __init__(self):
+        self.pbar = None
+        self.manager = None
+        self.pause_event = threading.Event()
+        self.pause_event.set()
+        self.shutdown_event = threading.Event()
+        self.shutdown_event.set()
+        self.instances = OrderedDict()
+        self.keep = False
+        self.logging_config = None
+        self.last_pause_wait_time = 0
+        self.pause_wait_ttl_seconds = 0.2
+
+    def new_pbar(self, pool_mode=None, bytes=False, **kw):
+        from . import proxy
+
+        kw.setdefault('refresh_per_second', 8)
+        return proxy.get_progress_instance(
+            pool_mode,
+            "[progress.description]{task.description}",
+            progress.BarColumn(bar_width=None),
+            "[progress.percentage]{task.percentage:>3.0f}%",
+            utils.MofNColumn(bytes=bytes),
+            utils.SpeedColumn(bytes=bytes),
+            utils.TimeElapsedColumn(compact=True),
+            progress.TimeRemainingColumn(compact=True),
+            progress.SpinnerColumn(),
+            runtime=self,
+            **kw,
+        )
+
+    def get_pbar(self, pool_mode=None, start=True, **kw):
+        pbar = self.pbar
+        if pbar is None:
+            pbar = self.pbar = self.new_pbar(pool_mode=pool_mode, **kw)
+        elif pool_mode == 'process' and not pbar.multiprocess:
+            pbar = self.pbar = pbar.convert_proxy(runtime=self)
+        if start:
+            pbar.start()
+        return pbar
+
+    def clear_pbar(self, strict=True, force=False, soft=False):
+        if force:
+            for bar_ref in reversed(list(self.instances.values())):
+                bar = bar_ref()
+                if bar is not None:
+                    bar.close(remove=False)
+                    bar.disable = True
+            if self.pbar is not None:
+                self.pbar.stop()
+            self.pbar = None
+        if self.instances:
+            if strict:
+                raise RuntimeError("Cannot clear progress bar while instances are still active.")
+        elif not utils.is_main_process():
+            if strict:
+                raise RuntimeError("Cannot clear progress bar in a subprocess.")
+        elif soft or self.keep:
+            if self.pbar is not None:
+                self.pbar.refresh()
+        else:
+            if self.pbar is not None:
+                self.pbar.start()
+                self.pbar.refresh()
+                self.pbar.stop()
+            self.pbar = None
+
+    def add_instance(self, bar):
+        self.instances.setdefault(hash(bar), weakref.ref(bar))
+        return bar
+
+    def remove_instance(self, bar):
+        self.instances.pop(hash(bar), None)
+
+    def get_instance(self, i=-1):
+        try:
+            return list(self.instances.values())[i]()
+        except IndexError:
+            raise IndexError(f'No progress bar found at index {i} in list of length {len(self.instances)}')
+
+    def close_instances(self):
+        for bar_ref in list(self.instances.values()):
+            bar = bar_ref()
+            if bar is not None:
+                bar.close()
+        self.instances.clear()
+
+    def pause_wait(self):
+        self.pause_event.wait()
+
+    def ttl_pause_wait(self):
+        current_time = int(time.time() / self.pause_wait_ttl_seconds)
+        if current_time != self.last_pause_wait_time:
+            self.last_pause_wait_time = current_time
+            self.pause_event.wait()
+
+    def pause(self, paused=True):
+        pbar = self.pbar
+        prev_paused = getattr(pbar, 'paused', False)
+        if pbar is not None:
+            pbar.paused = paused
+            if paused:
+                pbar.stop()
+                self.pause_event.clear()
+            else:
+                pbar.start()
+                self.pause_event.set()
+        return _pause_exit(prev_paused)
+
+    def print(self, *args, **kw):
+        if self.pbar is not None:
+            return self.pbar.print(*args, **kw)
+        return rich.print(*args, **kw)
+
+    def install_worker_context(self, *, pbar, pause_event, shutdown_event, logging_config):
+        self.pbar = pbar
+        self.pause_event = pause_event
+        self.shutdown_event = shutdown_event
+        self.logging_config = logging_config
 
 
-def _new_pbar(pool_mode: T_POOL_MODE=None, bytes=False, **kw) -> 'proxy.Progress|proxy.ProgressProxy':
-    kw.setdefault('refresh_per_second', 8)
-    return proxy.get_progress_instance(
-        pool_mode,
-        "[progress.description]{task.description}",
-        progress.BarColumn(bar_width=None),
-        "[progress.percentage]{task.percentage:>3.0f}%",
-        utils.MofNColumn(bytes=bytes),
-        utils.SpeedColumn(bytes=bytes),
-        utils.TimeElapsedColumn(compact=True),
-        progress.TimeRemainingColumn(compact=True),
-        progress.SpinnerColumn(),
-        **kw,
-    )
+_runtime = Runtime()
 
 
-def _get_pbar(pool_mode: T_POOL_MODE=None, start=True, **kw) -> 'proxy.Progress|proxy.ProgressProxy':
-    # no progress bar yet, create one
-    if not M.pbar:
-        # print("New progress bar", pool_mode)
-        M.pbar = _new_pbar(pool_mode=pool_mode, **kw)
-    # need to create multiprocess-compatible progress bar
-    elif pool_mode == 'process' and not M.pbar.multiprocess:
-        # print("Converting proxy")
-        M.pbar = M.pbar.convert_proxy()
-    if start:
-        M.pbar.start()
-    return M.pbar
+def _get_pbar(pool_mode=None, start=True, **kw):
+    return _runtime.get_pbar(pool_mode=pool_mode, start=start, **kw)
 
 
 def _clear_pbar(strict=True, force=False, soft=False):
-    """Clear the progress bar."""
-    if force:
-        for bar in _instances[::-1]:
-            bar._remove(False)
-            bar.disable = True
-        M.pbar.stop()
-        M.pbar = None
-    if M._instances:
-        if strict:
-            raise RuntimeError("Cannot clear progress bar while instances are still active.")
-    elif not utils.is_main_process():
-        if strict:
-            raise RuntimeError("Cannot clear progress bar in a subprocess.")
-    elif soft or M._keep:
-        if M.pbar is not None:
-            M.pbar.refresh()
-    else:
-        if M.pbar is not None:
-            M.pbar.start()
-            M.pbar.refresh()
-            M.pbar.stop()
-        M.pbar = None
+    return _runtime.clear_pbar(strict=strict, force=force, soft=soft)
+
+
+def _add_instance(bar):
+    return _runtime.add_instance(bar)
+
+
+def _remove_instance(bar):
+    return _runtime.remove_instance(bar)
+
+
+def _close_instances():
+    return _runtime.close_instances()
 
 
 @contextmanager
 def group():
     """Group progress bars."""
     try:
-        M._keep = True
-        yield 
+        _runtime.keep = True
+        yield
     finally:
-        M._keep = False
-        _clear_pbar()
-
-
-# ---------------------------------------------------------------------------- #
-#                            Global context methods                            #
-# ---------------------------------------------------------------------------- #
+        _runtime.keep = False
+        _runtime.clear_pbar()
 
 
 def print(*args, **kw):
     """Print with rich."""
-    if pbar is not None:
-        return pbar.print(*args, **kw)
-    return rich.print(*args, **kw)
+    return _runtime.print(*args, **kw)
 
 
 def get(i=-1):
     """Get an mqdm instance."""
-    try:
-        return list(_instances.values())[i]()
-    except IndexError:
-        raise IndexError(f'No progress bar found at index {i} in list of length {len(_instances)}')
+    return _runtime.get_instance(i)
 
 
 def set_description(desc, i=-1):
@@ -127,78 +193,46 @@ def update(n=1, i=-1, **kw):
     return get(i).update(n, **kw)
 
 
-
-import weakref
-from collections import OrderedDict
-
-_instances = OrderedDict()
-
-def _add_instance(bar):
-    if bar not in _instances:
-        _instances[hash(bar)] = weakref.ref(bar)
-    return bar
-
-def _remove_instance(bar):
-    _instances.pop(hash(bar), None)  # Safely remove without error if bar is not found
-
-def _close_instances():
-    for bar_ref in list(_instances.values()):  # Make sure to use list() to avoid modifying while iterating
-        bar = bar_ref()
-        if bar is not None:
-            bar.close()
-    _instances.clear()
-
-import atexit
-atexit.register(_close_instances)
-
-
 def _pause_wait():
-    M._pause_event.wait()
+    _runtime.pause_wait()
 
-_last_pause_wait_time = 0
-_pause_wait_ttl_seconds = 0.2
-def _ttl_pause_wait(): # lru_cache(1)(_pause_wait)(int(time.time()/ttl))
-    global _last_pause_wait_time
-    current_time = int(time.time() / _pause_wait_ttl_seconds)
-    if current_time != _last_pause_wait_time:
-        _last_pause_wait_time = current_time
-        M._pause_event.wait()
+
+def _ttl_pause_wait():
+    _runtime.ttl_pause_wait()
 
 
 def pause(paused=True):
     """Pause the progress bars. Useful for opening an interactive shell or printing stack traces."""
-    prev_paused = getattr(pbar, 'paused', False)
-    if pbar is not None:
-        pbar.paused = paused
-        if paused:
-            pbar.stop()
-            M._pause_event.clear()
-        else:
-            pbar.start()
-            M._pause_event.set()
-    return _pause_exit(prev_paused)
+    return _runtime.pause(paused)
+
 
 class _pause_exit:
     def __init__(self, prev_paused):
-        self.prev_paused = prev_paused  # it was paused before we got here
-        _pause_exit.last = self  # if another pause was called, ignore this one
-    def __enter__(self): pass
-    def __exit__(self, c, exc, t): 
-        if not exc and not self.prev_paused and self is _pause_exit.last:  # dont unpause for exceptions
+        self.prev_paused = prev_paused
+        _pause_exit.last = self
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, c, exc, t):
+        if not exc and not self.prev_paused and self is _pause_exit.last:
             pause(False)
 
 
-# ---------------------------------------------------------------------------- #
-#                               Primary interface                              #
-# ---------------------------------------------------------------------------- #
+atexit.register(_close_instances)
 
+
+from .executor import executor, T_POOL_MODE, Initializer
+from ._dev import embed, inp, bp, iex, profile, timeit
+from .utils import args, fn, fopen, ratelimit
+
+M.input = inp
 
 from .bar import mqdm
 from .pool import pool, ipool
 from ._logging import install as install_logging, uninstall as uninstall_logging
 
 
-# more descriptive names to avoid polluting the namespace
 mqpool = pool
 mqipool = ipool
 

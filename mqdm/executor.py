@@ -156,9 +156,9 @@ POOL_EXECUTORS = {
 }
 
 
-def executor(pool_mode: T_POOL_MODE='process', bar_kw: dict=None, **kw) -> Executor:
+def executor(pool_mode: T_POOL_MODE='process', bar_kw: dict=None, runtime=None, **kw) -> Executor:
     """Return the appropriate executor for the pool mode of the progress bar."""
-    return POOL_EXECUTORS[pool_mode](initializer=Initializer(pool_mode=pool_mode, defaults=bar_kw), **kw)
+    return POOL_EXECUTORS[pool_mode](initializer=Initializer(pool_mode=pool_mode, defaults=bar_kw, runtime=runtime), **kw)
 
 import threading
 _thread_local_data = threading.local()
@@ -168,22 +168,26 @@ def _get_local(key, default=None):
 
 
 class Initializer:
-    def __init__(self, fn: Callable=None, *a, pool_mode: T_POOL_MODE='process', defaults: dict=None, **kw):
+    def __init__(self, fn: Callable=None, *a, pool_mode: T_POOL_MODE='process', defaults: dict=None, runtime=None, **kw):
         self.fn = M.fn(fn, *a, **kw) if fn is not None else None
+        self.runtime = runtime or M._runtime
         self.pool_mode = pool_mode
-        self.pbar = M._get_pbar(pool_mode=pool_mode)
-        self.pause_event = M._pause_event
-        self.shutdown_event = M._shutdown_event
-        self.logging_config = M._logging_config
+        self.pbar = self.runtime.get_pbar(pool_mode=pool_mode)
+        self.pause_event = self.runtime.pause_event
+        self.shutdown_event = self.runtime.shutdown_event
+        self.logging_config = self.runtime.logging_config
         self.defaults = defaults if defaults is not None else {}
         self.pause_event.set()
         self.shutdown_event.set()
 
     def __call__(self):
         """Initialize the progress bar for the worker thread/process."""
-        M.pbar = self.pbar
-        M._pause_event = self.pause_event
-        M._shutdown_event = self.shutdown_event
+        M._runtime.install_worker_context(
+            pbar=self.pbar,
+            pause_event=self.pause_event,
+            shutdown_event=self.shutdown_event,
+            logging_config=self.logging_config,
+        )
         _thread_local_data.defaults = self.defaults
         # Mirror logging configuration in workers if present
         try:

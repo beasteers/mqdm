@@ -171,7 +171,7 @@ class mqdm:
     def __exit__(self, t, e, tb):
         self.entered = False
         self.close()
-        pbar = M.pbar
+        pbar = M._runtime.pbar
         if isinstance(e, KeyboardInterrupt) and pbar is not None:
             pbar.stop()
 
@@ -247,7 +247,7 @@ class mqdm:
 
     def _detach(self, remove=None, soft=False):
         """Detach the task from the progress bar."""
-        pbar = M.pbar
+        pbar = M._runtime.pbar
         if self.disable or pbar is None: return
 
         # stop and remove task
@@ -346,7 +346,7 @@ class mqdm:
 
         # update progress bar
         if kw:
-            M.pbar.update_(self.task_id, **kw)
+            M._runtime.pbar.update_(self.task_id, **kw)
         return self
 
 
@@ -388,7 +388,7 @@ class _speed_increment:
                 self.n = n
                 return
 
-        pbar = M.pbar
+        pbar = M._runtime.pbar
         if pbar is None:
             return
         

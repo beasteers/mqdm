@@ -1,6 +1,5 @@
 from collections import deque
 import dataclasses
-import threading
 from typing import Type
 from functools import wraps
 import multiprocessing as mp
@@ -132,7 +131,7 @@ class Progress(progress.Progress):
 
     # convert to multiprocessing proxy
 
-    def convert_proxy(self) -> 'ProgressProxy':
+    def convert_proxy(self, runtime=None) -> 'ProgressProxy':
         """Convert to a multiprocessing proxy object so methods can be called in another process."""
         # get current state and cleanup
         started = self.live.is_started
@@ -144,7 +143,7 @@ class Progress(progress.Progress):
         self.stop()
 
         # create proxy
-        proxy = get_manager().mqdm_Progress(
+        proxy = get_manager(runtime=runtime).mqdm_Progress(
             *self.columns,
             _tasks=tasks,
             _task_index=self._task_index,
@@ -278,30 +277,26 @@ class MqdmManager(SyncManager):
     mqdm_Progress: Type[ProgressProxy]
 MqdmManager.register('mqdm_Progress', Progress, ProgressProxy)
 
-M._manager = None
-M._pause_event = threading.Event()
-M._pause_event.set()
-M._shutdown_event = threading.Event()
-M._shutdown_event.set()
-def get_manager() -> MqdmManager:
-    if M._manager is not None:
-        return M._manager
-    M._manager = manager = MqdmManager()
+def get_manager(runtime=None) -> MqdmManager:
+    runtime = runtime or M._runtime
+    if runtime.manager is not None:
+        return runtime.manager
+    runtime.manager = manager = MqdmManager()
     manager.start()
-    M._pause_event = manager.Event()
-    M._pause_event.set()
-    M._shutdown_event = manager.Event()
-    M._shutdown_event.set()
+    runtime.pause_event = manager.Event()
+    runtime.pause_event.set()
+    runtime.shutdown_event = manager.Event()
+    runtime.shutdown_event.set()
     return manager
 
 import atexit
 
 def _shutdown_manager():
     try:
-        manager = getattr(M, '_manager', None)
+        manager = M._runtime.manager
         if manager is not None:
             manager.shutdown()
-            M._manager = None
+            M._runtime.manager = None
     except Exception:
         # Best-effort shutdown; ignore errors at interpreter teardown
         pass
@@ -309,9 +304,9 @@ def _shutdown_manager():
 atexit.register(_shutdown_manager)
 
 
-def get_progress_instance(pool_mode: T_POOL_MODE=None, *columns, **kw):
+def get_progress_instance(pool_mode: T_POOL_MODE=None, *columns, runtime=None, **kw):
     if pool_mode == 'process':
-        manager = get_manager()
+        manager = get_manager(runtime=runtime)
         return manager.mqdm_Progress(*columns, **kw)
     return Progress(*columns, **kw)
 

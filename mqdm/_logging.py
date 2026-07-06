@@ -76,7 +76,7 @@ def install(
         logging.captureWarnings(True)
 
     # Save minimal config for worker processes to mirror
-    M._logging_config = {
+    M._runtime.logging_config = {
         "level": level,
         "markup": markup,
         "capture_warnings": capture_warnings,
@@ -96,7 +96,7 @@ def uninstall() -> None:
 
 
 def _install_from_config(cfg: dict | None) -> None:
-    """Internal: install handler in workers using stored config from mqdm._logging_config."""
+    """Internal: install handler in workers using stored runtime logging config."""
     if not cfg:
         return
     formatter = None
