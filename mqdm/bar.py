@@ -258,7 +258,7 @@ class mqdm:
         disable = self.disable
         ttl_pause_wait = self.runtime.ttl_pause_wait
         delta = 1 / (self._progress_kw['refresh_per_second'] or 8)
-        pbar = self.runtime.pbar
+        runtime = self.runtime
         task_id = self.task_id
         get_desc = self.get_desc
 
@@ -285,7 +285,7 @@ class mqdm:
                         if desc is not None:
                             kw['description'] = desc
                     
-                pbar.update_(task_id, advance=n_acc, **kw)
+                runtime.pbar.update_(task_id, advance=n_acc, **kw)
                 if wait:
                     ttl_pause_wait()
 
@@ -365,6 +365,21 @@ class mqdm:
             self._task_dict = pbar.pop_task(self.task_id, remove=remove)
         self.runtime.remove_instance(self)
         self.runtime.clear_pbar(strict=False, soft=soft)
+
+    def _set_task_dict(self, kw):
+        task = self._task_dict
+        task['completed'] = self._n
+        if 'total' in kw:
+            task['total'] = kw['total']
+        if 'description' in kw:
+            task['description'] = kw['description']
+        if 'visible' in kw:
+            task['visible'] = kw['visible']
+
+        fields = task.setdefault('fields', {})
+        for key, value in kw.items():
+            if key not in {'advance', 'completed', 'total', 'description', 'visible', 'refresh'}:
+                fields[key] = value
 
     def _process_args(self, *, initial=False, append_total=None, arg=..., i: int=None, **kw) -> dict:
         """Normalize task fields and keep local mirrors in sync."""
@@ -452,7 +467,15 @@ class mqdm:
         kw = self._process_args(**kw)
         if self.disable: return self
 
-        # update progress bar
-        if kw:
-            self.runtime.pbar.update_(self.task_id, **kw)
+        if not kw:
+            return self
+
+        pbar = self.runtime.pbar
+        if pbar is not None:
+            pbar.update_(self.task_id, **kw)
+            return self
+        if self._task_dict is not None:
+            self._set_task_dict(kw)
+            return self
+        raise RuntimeError("Cannot update mqdm bar without an attached progress bar or detached task state.")
         return self

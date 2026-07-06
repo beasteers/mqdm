@@ -71,6 +71,23 @@ def test_fopen_flushes_final_buffer_with_external_bar(tmp_path):
         bar.close()
 
 
+def test_fopen_text_mode_tracks_utf8_bytes(tmp_path):
+    p = tmp_path / 'data.txt'
+    p.write_text('a\né\n', encoding='utf-8')
+
+    runtime = mqdm.Runtime()
+    bar = mqdm.mqdm(total=0, runtime=runtime, init_kw={'bytes': True}, refresh_per_second=0.1)
+
+    try:
+        bar.open()
+        with utils.fopen(p, 'r', pbar=bar) as f:
+            assert list(f) == ['a\n', 'é\n']
+
+        assert runtime.pbar.dump_task(bar.task_id)['completed'] == p.stat().st_size
+    finally:
+        bar.close()
+
+
 def test_process_pool_compat_flag_matches_python_version():
     expected_module = 'mqdm._process_pool_compat' if sys.version_info < (3, 11) else 'mqdm._process_pool_keyboard'
     assert executor_mod.process_worker_keyboard_interrupt.__module__ == expected_module

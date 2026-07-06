@@ -104,3 +104,29 @@ def test_bar_close_flush_does_not_wait_on_pause():
         assert bar._task_dict["completed"] == 2
     finally:
         bar.close()
+
+
+def test_bar_detached_updates_restore_on_reopen():
+    runtime = M.Runtime()
+    bar = M.mqdm(total=5, desc="work", runtime=runtime)
+
+    try:
+        bar.update(advance=2)
+        bar.close()
+
+        bar.set(advance=1, description="later", visible=False, transient=True)
+
+        assert bar._task_dict["completed"] == 3
+        assert bar._task_dict["description"] == "later"
+        assert bar._task_dict["visible"] is False
+        assert bar._task_dict["fields"]["transient"] is True
+
+        bar.open()
+
+        restored = runtime.pbar.dump_task(bar.task_id)
+        assert restored["completed"] == 3
+        assert restored["description"] == "later"
+        assert restored["visible"] is False
+        assert restored["fields"]["transient"] is True
+    finally:
+        bar.close()

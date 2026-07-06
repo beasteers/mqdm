@@ -102,6 +102,8 @@ class fopen:
     def __init__(self, fname: os.PathLike, mode='r', pbar: 'M.mqdm'=None, **kw):
         self.total = os.path.getsize(fname)
         self.fd = open(fname, mode)
+        self._tell = self.fd.tell if 'b' in mode else self.fd.buffer.tell
+        self._pos = self._tell()
         if pbar is None:
             kw.setdefault('desc', os.path.basename(fname))
             pbar = M.mqdm(init_kw={'bytes': True}, **kw)
@@ -129,7 +131,9 @@ class fopen:
         except StopIteration:
             self.pbar.fast_advance(n=0, flush=True, wait=False)
             raise
-        self.pbar.fast_advance(n=len(line))
+        pos = self._tell()
+        self.pbar.fast_advance(n=pos - self._pos)
+        self._pos = pos
         return line
 
     def __getattr__(self, name):
