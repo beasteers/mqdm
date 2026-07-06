@@ -1,7 +1,7 @@
 ''''''
 import time
 import sys
-from . import T_POOL_MODE
+from . import T_POOL_MODE, Runtime
 from . import utils
 from .executor import _get_local
 import mqdm as M
@@ -31,7 +31,7 @@ class mqdm:
     _task_dict = None        # detached serialized task state
     get_desc = None          # a function to get the description
     disable = False          # whether to disable the progress bar
-    runtime = None           # runtime that owns this bar's state
+    runtime: Runtime = None  # runtime that owns this bar's state
 
     def __init__(
             self, 
@@ -42,7 +42,7 @@ class mqdm:
             runtime=None,
             disable=None, 
             # miniters=None, 
-            fast_fps_delta=0.05, 
+            fast_fps_delta=0.5, 
             task_id=None, 
 
             # progress bar arguments
@@ -251,27 +251,28 @@ class mqdm:
 
     # ----------------------------- Iteration methods ---------------------------- #
 
-    def _get_iter(self, iter, **kw):
+    def _get_iter(self, it, **kw):
         i = x = ...
+        D = self.__dict__
+        fast_advance = self.fast_advance
+        ttl_pause_wait = self.runtime.ttl_pause_wait
         try:
-            fast_advance = self.fast_advance
-            it = enumerate(iter)
-            i, x = next(it)
-            self.runtime.ttl_pause_wait()
-            self._n += 1
-            fast_advance(0, arg=x, i=i, flush=True)
+            i = 0
+            D['_n'] = 0
+            it = iter(it)
+            x = next(it)
+            ttl_pause_wait()
+            fast_advance.flush(arg=x, i=i)
             yield x
-            for i, x in it:
-                self.runtime.ttl_pause_wait()
-                self._n += 1
+            for x in it:
+                ttl_pause_wait()
+                i += 1
+                D['_n'] = i
                 fast_advance(1, arg=x, i=i)
                 yield x
-            # self._n += 1
-            fast_advance(1, flush=True)
+            fast_advance(1, arg=x, i=i, flush=True)
         except StopIteration:
-            pass
-        finally:
-            fast_advance(0, flush=True)
+            fast_advance.flush()
 
     def __call__(self, iter, desc=None, total=None, **kw) -> 'mqdm':
         """Iterate over an iterable with a progress bar."""
@@ -428,35 +429,43 @@ class _speed_increment:
         self.runtime = runtime
         self.disable = disable
 
-    def flush(self):
-        return self(0, flush=True)
-
-    def __call__(self, n: int=1, completed: int=..., arg=..., i=..., flush=False):
+    def __call__(self, n: int=1, arg=..., i=..., flush=False):
         if self.disable:
             return
-        
-        if completed is not ...:
-            self.nc = completed
-            self.n = n = 0
 
+        self.n += n
         delta = self.delta
         if delta:
             # If the time since the last increment is less than some delta, increment a local counter
             # The only time this fails is if the iterations are highly irregular 
             # (e.g. a bunch of 1000fps followed by a 100 second iteration
             #       - could happen with overwrite=False type scenarios)
-            t = time.time()
-            last_t = self.t
-            n0 = self.n
-            n += n0
-            if t - last_t < delta and not flush:
-                self.n = n
+            t = time.monotonic()
+            if not flush and t - self.t < delta:
                 return
+            self.t = t
 
+        self.flush(arg, i)
+
+    def flush(self, arg=..., i=...):
+        """Flush the local counter to the progress bar."""
         pbar = self.runtime.pbar
         if pbar is None:
             return
-        
+        pbar.update_(self.task_id, advance=self.n, **self._get_kw(arg, i))
+        self.n = 0
+        # self.nc = ...
+
+    def update_completed(self, completed: int, arg=..., i=...):
+        """Update the completed count and flush the progress bar."""
+        self.nc = completed
+        pbar = self.runtime.pbar
+        if pbar is None:
+            return
+        pbar.update_(self.task_id, completed=self.nc, **self._get_kw(arg, i))
+
+    def _get_kw(self, arg=..., i=...):
+        """Get the keyword arguments for the progress bar update."""
         kw = {}
         if i is not ...:
             get_desc = self.get_desc
@@ -464,14 +473,5 @@ class _speed_increment:
                 desc = get_desc(arg, i)
                 if desc is not None:
                     kw['description'] = desc
-
-        if self.nc is not ...:
-            pbar.update(self.task_id, completed=self.nc + n, **kw)
-        elif n:
-            pbar.update(self.task_id, advance=n, **kw)
-
-        if delta:
-            # if n0:
-            self.n = 0
-            self.nc = ...
-            self.t = t
+        return kw
+        

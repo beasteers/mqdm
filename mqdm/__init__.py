@@ -30,8 +30,8 @@ class Runtime:
         self.keep_depth = 0
         self.capture_warnings = False
         self.logging_config = None
-        self.last_pause_wait_time = 0
-        self.pause_wait_ttl_seconds = 0.2
+        self.next_pause_check_time = 0
+        self.pause_wait_ttl_seconds = 0.5
         _all_runtimes.add(self)
 
     def __getstate__(self):
@@ -138,9 +138,9 @@ class Runtime:
         self.pause_event.wait()
 
     def ttl_pause_wait(self):
-        current_time = int(time.time() / self.pause_wait_ttl_seconds)
-        if current_time != self.last_pause_wait_time:
-            self.last_pause_wait_time = current_time
+        now = time.monotonic()
+        if now >= self.next_pause_check_time:
+            self.next_pause_check_time = now + self.pause_wait_ttl_seconds
             self.pause_event.wait()
 
     def pause(self, paused=True):

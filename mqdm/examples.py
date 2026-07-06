@@ -175,7 +175,7 @@ def speed_fn(t, N=1000000000):
             # print("break", i)
             break
 
-# @M.utils.profile
+@M.profile
 def example_speed(t=10, n_workers=1, x=1, **kw):
     import time
     t0 = time.time()
@@ -186,7 +186,7 @@ def example_speed(t=10, n_workers=1, x=1, **kw):
         '[bold blue]Very important work',
         bar_kw={'transient': False},
         n_workers=n_workers,
-        squeeze_=False,
+        squeeze_=True,
         **kw)
     print("done in", time.time() - t0, "seconds", 123)
     time.sleep(2)
