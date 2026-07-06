@@ -314,64 +314,6 @@ class mqdm:
             yield x
         update(x, 0, flush=True)
 
-    # def _get_iter(self, it):
-    #     D = self.__dict__
-    #     if self.disable:
-    #         for x in it:
-    #             D['_n'] += 1
-    #             yield x
-    #         return
-
-    #     ttl_pause_wait = self.runtime.ttl_pause_wait
-    #     delta = 1 / (self._progress_kw['refresh_per_second'] or 8)
-    #     pbar = self.runtime.pbar
-    #     update = pbar.update_
-    #     task_id = self.task_id
-    #     get_desc = self.get_desc
-
-    #     def flush(n=0, x=None, i=None):
-    #         kw = {}
-    #         if i is not ...:
-    #             if get_desc is not None:
-    #                 desc = get_desc(x, i)
-    #                 if desc is not None:
-    #                     kw['description'] = desc
-    #         update(task_id, advance=n, **kw)
-    #         D['_n'] = i + 1
-    #         ttl_pause_wait()
-
-    #     try:
-    #         ttl_pause_wait()
-    #         i = 0
-    #         # D['_n'] = 1
-    #         it = iter(it)
-    #         x = next(it)
-    #         flush(0, x, i)
-    #         yield x
-    #     except StopIteration:
-    #         flush()
-    #         return 
-
-    #     n = 0
-    #     t_last = 0
-    #     for x in it:
-    #         i += 1
-    #         n += 1
-
-    #         # If the time since the last increment is less than some delta, increment a local counter
-    #         # The only time this fails is if the iterations are highly irregular 
-    #         # (e.g. a bunch of 1000fps followed by a 100 second iteration
-    #         #       - could happen with overwrite=False type scenarios)
-    #         t = monotonic()
-    #         if t - t_last >= delta:
-    #             flush(n, x, i)
-    #             n = 0
-    #             t_last = t
-    #         yield x
-    #     flush(n, x, i)
-    #     n = 0
-    #     D['_n'] = i + 1
-
     def __call__(self, iter, desc=None, total=None, **kw) -> 'mqdm':
         """Iterate over an iterable with a progress bar."""
         if isinstance(iter, str) and desc is None:  # infer string as description
