@@ -70,11 +70,7 @@ class mqdm:
             it, desc = None, it
 
         self.runtime = runtime or _get_local('runtime', M._current_runtime())
-        # if disable is not None:
-        #     self.disable = disable
-        if disable is None:
-            disable = self.disable
-        self.disable = disable
+        self.disable = self.disable if disable is None else disable
         # self.miniters = miniters
         self.fast_advance = _speed_increment(delta=fast_fps_delta, disable=self.disable, runtime=self.runtime)
 

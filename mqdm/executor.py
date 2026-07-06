@@ -1,82 +1,21 @@
-import os
+import sys
 from typing import Callable, Literal
 from concurrent.futures._base import FINISHED, RUNNING
-from concurrent.futures import Future, Executor, ThreadPoolExecutor, ProcessPoolExecutor
-from concurrent.futures._base import LOGGER
+from concurrent.futures import Future, Executor, ThreadPoolExecutor, ProcessPoolExecutor as _StdlibProcessPoolExecutor
 from concurrent.futures.process import _RemoteTraceback  # used in bar.py
 import mqdm as M
-from ._logging import _install_from_config
 
-# ---------------------------------------------------------------------------- #
-#                                 Monkey Patch                                 #
-# At some point, _max_tasks_per_child and exit_pid were added to ProcessPoolExecutor.
-# At some point we can remove this monkey patch if we drop support for older Python versions.
-# ---------------------------------------------------------------------------- #
+# ----------- Process Pool Executor with KeyboardInterrupt Handling ---------- #
 
-# from concurrent.futures.process import _sendback_result
-from concurrent.futures.process import _ResultItem, _ExceptionWithTraceback
-class _ResultItem(_ResultItem):
-    def __init__(self, work_id, exception=None, result=None, exit_pid=None):
-        self.work_id = work_id
-        self.exception = exception
-        self.result = result
-        self.exit_pid = exit_pid
+from ._process_pool_keyboard import process_worker_keyboard_interrupt
+_ProcessPoolExecutorCompat = _StdlibProcessPoolExecutor
+if sys.version_info < (3, 11):
+    from ._process_pool_compat import ProcessPoolExecutorCompat as _ProcessPoolExecutorCompat, process_worker_keyboard_interrupt
 
-
-def _sendback_result(result_queue, work_id, result=None, exception=None, exit_pid=None):
-    try:
-        result_queue.put(_ResultItem(work_id, result=result, exception=exception, exit_pid=exit_pid))
-    except BaseException as e:
-        exc = _ExceptionWithTraceback(e, e.__traceback__)
-        result_queue.put(_ResultItem(work_id, exception=exc, exit_pid=exit_pid))
-
-
-def _process_worker(call_queue, result_queue, initializer, initargs, max_tasks=None):
-    if initializer is not None:
-        try:
-            initializer(*initargs)
-        except BaseException:
-            LOGGER.critical('Exception in initializer:', exc_info=True)
-            return
-    num_tasks = 0
-    exit_pid = None
-    while True:
-        call_item = call_queue.get(block=True)
-        if call_item is None:
-            # Wake up queue management thread
-            result_queue.put(os.getpid())
-            return
-
-        if max_tasks is not None:
-            num_tasks += 1
-            if num_tasks >= max_tasks:
-                exit_pid = os.getpid()
-
-        try:
-            r = call_item.fn(*call_item.args, **call_item.kwargs)
-        except KeyboardInterrupt as e:  # +++++ Added: ensure KeyboardInterrupt stops the worker
-            exc = _ExceptionWithTraceback(e, e.__traceback__)
-            _sendback_result(result_queue, call_item.work_id, exception=exc, exit_pid=os.getpid())
-            return
-        except BaseException as e:
-            exc = _ExceptionWithTraceback(e, e.__traceback__)
-            _sendback_result(result_queue, call_item.work_id, exception=exc, exit_pid=exit_pid)
-        else:
-            _sendback_result(result_queue, call_item.work_id, result=r, exit_pid=exit_pid)
-            del r
-
-        del call_item
-
-        if exit_pid is not None:
-            return
-
-
-class ProcessPoolExecutor(ProcessPoolExecutor):
-    _max_tasks_per_child = None  # specific python version compatibility (?)
-
+class ProcessPoolExecutor(_ProcessPoolExecutorCompat):
     def _spawn_process(self):
         p = self._mp_context.Process(
-            target=_process_worker,
+            target=process_worker_keyboard_interrupt,
             args=(
                 self._call_queue,
                 self._result_queue,
@@ -88,9 +27,8 @@ class ProcessPoolExecutor(ProcessPoolExecutor):
         p.start()
         self._processes[p.pid] = p
 
-# ---------------------------------------------------------------------------- #
-#                                  Sequential                                  #
-# ---------------------------------------------------------------------------- #
+
+# ---------------------------- Sequential Executor --------------------------- #
 
 
 class SequentialFuture(Future):
@@ -119,7 +57,7 @@ class SequentialFuture(Future):
         _rich_traceback_omit = True
         self._evaluate()
         return super().result(timeout)
-    
+
     def exception(self, timeout=None):
         _rich_traceback_omit = True
         self._evaluate()
@@ -141,10 +79,7 @@ class SequentialExecutor(Executor):
         return SequentialFuture(fn, *args, **kwargs)
 
 
-
-# ---------------------------------------------------------------------------- #
-#                         Concurrent Futures Executors                         #
-# ---------------------------------------------------------------------------- #
+# --------------------------------- Executors -------------------------------- #
 
 
 T_POOL_MODE = Literal['process', 'thread', 'sequential', None]
@@ -160,6 +95,10 @@ def executor(pool_mode: T_POOL_MODE='process', bar_kw: dict=None, runtime=None, 
     """Return the appropriate executor for the pool mode of the progress bar."""
     return POOL_EXECUTORS[pool_mode](initializer=Initializer(pool_mode=pool_mode, defaults=bar_kw, runtime=runtime), **kw)
 
+
+# -------------------------------- Initializer ------------------------------- #
+
+
 import threading
 _thread_local_data = threading.local()
 def _get_local(key, default=None):
@@ -170,30 +109,14 @@ def _get_local(key, default=None):
 class Initializer:
     def __init__(self, fn: Callable=None, *a, pool_mode: T_POOL_MODE='process', defaults: dict=None, runtime=None, **kw):
         self.fn = M.fn(fn, *a, **kw) if fn is not None else None
-        self.runtime = runtime or M._current_runtime()
-        self.pool_mode = pool_mode
-        self.pbar = self.runtime.get_pbar(pool_mode=pool_mode)
-        self.pause_event = self.runtime.pause_event
-        self.shutdown_event = self.runtime.shutdown_event
-        self.logging_config = self.runtime.logging_config
         self.defaults = defaults if defaults is not None else {}
-        self.pause_event.set()
-        self.shutdown_event.set()
+        self.runtime = runtime or M._current_runtime()
+        self.runtime.prepare_pool_worker(pool_mode=pool_mode)
 
     def __call__(self):
         """Initialize the progress bar for the worker thread/process."""
         _thread_local_data.runtime = self.runtime
-        self.runtime.install_worker_context(
-            pbar=self.pbar,
-            pause_event=self.pause_event,
-            shutdown_event=self.shutdown_event,
-            logging_config=self.logging_config,
-        )
         _thread_local_data.defaults = self.defaults
-        # Mirror logging configuration in workers if present
-        try:
-            _install_from_config(self.logging_config)
-        except Exception:
-            pass
+        self.runtime.install_pool_worker()
         if self.fn is not None:
             self.fn()

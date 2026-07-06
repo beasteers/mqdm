@@ -119,6 +119,28 @@ def ipool(
         raise _combine_remote_exceptions(remote_exceptions)
 
 
+@wraps(ipool, ['__doc__'])
+def pool(
+        fn: Callable,
+        iter: Iterable,
+        desc: str | T_DESC_FUNC='',
+        bar_kw: dict | None=None,
+        n_workers: int=8,
+        pool_mode: T_POOL_MODE='process',
+        results_: list=None,
+        ordered_: bool=True,
+        squeeze_: bool=True,
+        runtime=None,
+        **kw) -> Iterable:
+    results_ = [] if results_ is None else results_
+    for x in ipool(fn, iter, desc=desc, bar_kw=bar_kw, n_workers=n_workers, pool_mode=pool_mode, ordered_=ordered_, squeeze_=squeeze_, runtime=runtime, **kw):
+        results_.append(x)
+    return results_
+
+
+# ----------------------------------- Init ----------------------------------- #
+
+
 def _make_pool_plan(
         *,
         fn: Callable,
@@ -159,6 +181,9 @@ def _make_pool_plan(
 def _run_inline_single(plan: _PoolPlan):
     arg = utils.args.from_item(next(builtins.iter(plan.iterable)), **plan.fn_kw)
     return arg(plan.fn)
+
+
+# ------------------------------- Task Handling ------------------------------ #
 
 
 def _submit_tasks(executor, plan: _PoolPlan, pbar: mqdm) -> list[_Task]:
@@ -208,6 +233,9 @@ def _shutdown_for_interrupt(executor, pool_mode: T_POOL_MODE, runtime) -> None:
     executor.shutdown(wait=False, cancel_futures=True)
 
 
+# ---------------------------- Exception Handling ---------------------------- #
+
+
 def _add_func_args_str_to_exception(e, fn, arg):
     """Add the function name and arguments to the exception."""
     cause = getattr(e, '__cause__', None)
@@ -250,22 +278,3 @@ def _combine_remote_exceptions(excs, n_fn_limit=10, n_tb_limit=10):
     e = cls(msg)
     e.__cause__ = _RemoteTraceback("\n".join(merged))
     return e
-
-
-@wraps(ipool, ['__doc__'])
-def pool(
-        fn: Callable,
-        iter: Iterable,
-        desc: str | T_DESC_FUNC='',
-        bar_kw: dict | None=None,
-        n_workers: int=8,
-        pool_mode: T_POOL_MODE='process',
-        results_: list=None,
-        ordered_: bool=True,
-        squeeze_: bool=True,
-        runtime=None,
-        **kw) -> Iterable:
-    results_ = [] if results_ is None else results_
-    for x in ipool(fn, iter, desc=desc, bar_kw=bar_kw, n_workers=n_workers, pool_mode=pool_mode, ordered_=ordered_, squeeze_=squeeze_, runtime=runtime, **kw):
-        results_.append(x)
-    return results_

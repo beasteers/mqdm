@@ -30,6 +30,32 @@ class Runtime:
         self.pause_wait_ttl_seconds = 0.2
         _all_runtimes.add(self)
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['manager'] = None
+        state['instances'] = OrderedDict()
+        state['logging_handlers'] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.pause_event.set()
+        self.shutdown_event.set()
+        self.instances = OrderedDict()
+        self.logging_handlers = weakref.WeakSet()
+        _all_runtimes.add(self)
+
+    def prepare_pool_worker(self, pool_mode=None):
+        self.get_pbar(pool_mode=pool_mode)
+        self.pause_event.set()
+        self.shutdown_event.set()
+
+    def install_pool_worker(self):
+        try:
+            _install_from_config(self.logging_config)
+        except Exception:
+            pass
+
     def new_pbar(self, pool_mode=None, bytes=False, **kw):
         from . import proxy
 
@@ -247,7 +273,7 @@ M.input = inp
 
 from .bar import mqdm
 from .pool import pool, ipool
-from ._logging import install as install_logging, uninstall as uninstall_logging
+from ._logging import _install_from_config, install as install_logging, uninstall as uninstall_logging
 
 
 mqpool = pool
