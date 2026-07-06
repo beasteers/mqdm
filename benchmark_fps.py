@@ -5,6 +5,11 @@ import time
 
 import mqdm as M
 
+try:
+    import tqdm
+except ImportError:
+    tqdm = None
+
 
 def _bench_vanilla_iter(*, seconds: float) -> dict:
     count = 0
@@ -78,6 +83,50 @@ def _bench_vanilla_manual(*, seconds: float) -> dict:
     }
 
 
+def _bench_tqdm_iter(*, seconds: float, disable: bool) -> dict:
+    if tqdm is None:
+        raise RuntimeError("tqdm is not installed")
+
+    count = 0
+    start = time.perf_counter()
+    deadline = start + seconds
+
+    for _ in tqdm.tqdm(range(10**9), disable=disable):
+        count += 1
+        if time.perf_counter() >= deadline:
+            break
+
+    elapsed = time.perf_counter() - start
+    return {
+        "count": count,
+        "elapsed": elapsed,
+        "fps": count / elapsed if elapsed else 0.0,
+    }
+
+
+def _bench_tqdm_manual(*, seconds: float, disable: bool) -> dict:
+    if tqdm is None:
+        raise RuntimeError("tqdm is not installed")
+
+    count = 0
+    start = time.perf_counter()
+    deadline = start + seconds
+
+    with tqdm.tqdm(total=10**9, disable=disable) as bar:
+        while True:
+            bar.update()
+            count += 1
+            if time.perf_counter() >= deadline:
+                break
+
+    elapsed = time.perf_counter() - start
+    return {
+        "count": count,
+        "elapsed": elapsed,
+        "fps": count / elapsed if elapsed else 0.0,
+    }
+
+
 def _bench_iter(*, seconds: float, disable: bool, fast_fps_delta: float, transient: bool) -> dict:
     count = 0
     start = time.perf_counter()
@@ -132,7 +181,11 @@ BENCHES = {
     "vanilla-iter": lambda seconds: _bench_vanilla_iter(seconds=seconds),
     "enumerate-iter": lambda seconds: _bench_enum_iter(seconds=seconds),
     "enumerate-gen-iter": lambda seconds: _bench_enum_gen_iter(seconds=seconds),
-    # "vanilla-manual": lambda seconds: _bench_vanilla_manual(seconds=seconds),
+    "vanilla-manual": lambda seconds: _bench_vanilla_manual(seconds=seconds),
+    "tqdm-iter-disabled": lambda seconds: _bench_tqdm_iter(seconds=seconds, disable=True),
+    "tqdm-iter-enabled": lambda seconds: _bench_tqdm_iter(seconds=seconds, disable=False),
+    "tqdm-manual-disabled": lambda seconds: _bench_tqdm_manual(seconds=seconds, disable=True),
+    "tqdm-manual-enabled": lambda seconds: _bench_tqdm_manual(seconds=seconds, disable=False),
     "iter-disabled": lambda seconds: _bench_iter(seconds=seconds, disable=True, fast_fps_delta=0.05, transient=True),
     "iter-direct": lambda seconds: _bench_iter(seconds=seconds, disable=False, fast_fps_delta=0.0, transient=True),
     "iter-batched": lambda seconds: _bench_iter(seconds=seconds, disable=False, fast_fps_delta=0.05, transient=True),
@@ -195,9 +248,14 @@ def main() -> None:
             "vanilla-iter",
             "enumerate-iter",
             "enumerate-gen-iter",
+            "tqdm-iter-disabled",
+            "tqdm-iter-enabled",
             "iter-disabled",
             "iter-batched",
             "iter-direct",
+            "vanilla-manual",
+            "tqdm-manual-disabled",
+            "tqdm-manual-enabled",
             "manual-disabled",
             "manual-batched",
             "manual-direct",

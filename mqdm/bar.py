@@ -1,5 +1,6 @@
 ''''''
 import time
+from time import monotonic
 import sys
 from . import T_POOL_MODE, Runtime
 from . import utils
@@ -42,7 +43,7 @@ class mqdm:
             runtime=None,
             disable=None, 
             # miniters=None, 
-            fast_fps_delta=0.5, 
+            fast_fps_delta=None, # deprecated, use refresh_per_second instead
             task_id=None, 
 
             # progress bar arguments
@@ -72,7 +73,7 @@ class mqdm:
         self._init_runtime(
             runtime=runtime,
             disable=disable,
-            fast_fps_delta=fast_fps_delta,
+            fast_fps_delta=fast_fps_delta or (1/(refresh_per_second or 8)),
             progress_kw=progress_kw,
             auto_refresh=auto_refresh,
             refresh_per_second=refresh_per_second,
@@ -112,7 +113,7 @@ class mqdm:
             expand):
         self.runtime = runtime or _get_local('runtime', M._current_runtime())
         self.disable = self.disable if disable is None else disable
-        self.fast_advance = _speed_increment(delta=fast_fps_delta, disable=self.disable, runtime=self.runtime)
+        self.fast_advance = _speed_increment(delta=fast_fps_delta, runtime=self.runtime)
         self._progress_kw = {
             **(progress_kw or {}),
             "auto_refresh": auto_refresh,
@@ -252,9 +253,15 @@ class mqdm:
     # ----------------------------- Iteration methods ---------------------------- #
 
     def _get_iter(self, it):
+        if self.disable:
+            yield from it
+            return
+
         D = self.__dict__
         fast_advance = self.fast_advance
         ttl_pause_wait = self.runtime.ttl_pause_wait
+        update = fast_advance.__call__
+        flush = fast_advance.flush
 
         try:
             ttl_pause_wait()
@@ -262,19 +269,21 @@ class mqdm:
             D['_n'] = 1
             it = iter(it)
             x = next(it)
-            fast_advance.flush(x, i)
+            flush(x, i)
             yield x
         except StopIteration:
-            fast_advance.flush()
+            flush()
             return 
 
         for x in it:
-            ttl_pause_wait()
+            # ttl_pause_wait()
             i += 1
-            D['_n'] = i + 1
-            fast_advance(1, x, i)
+            # D['_n'] = i + 1
+            update(1, x, i)
             yield x
-        fast_advance(1, x, i, flush=True)
+        update(1)
+        flush(x, i)
+        D['_n'] = i + 1
 
     def __call__(self, iter, desc=None, total=None, **kw) -> 'mqdm':
         """Iterate over an iterable with a progress bar."""
@@ -420,36 +429,32 @@ class _speed_increment:
     """Increment the progress bar in a very fast loop.
     Saves time by reducing inter-process IO.
     """
-    __slots__ = ('n', 't', 'disable', 'delta', 'get_desc', 'task_id', 'runtime')
-    def __init__(self, runtime, delta=0, disable=False):
+    __slots__ = ('n', 't', 'delta', 'get_desc', 'task_id', 'runtime')
+    def __init__(self, runtime, delta=0):
         self.delta = delta
-        self.n = self.t = 0
+        self.n = 0
+        self.t = 0
         self.get_desc = None
         self.task_id = None
         self.runtime = runtime
-        self.disable = disable
 
-    def __call__(self, n: int=1, arg=..., i=..., flush=False):
-        if self.disable:
-            return
-
+    def __call__(self, n: int=1, arg=..., i=...):
         self.n += n
-        delta = self.delta
-        if delta:
-            # If the time since the last increment is less than some delta, increment a local counter
-            # The only time this fails is if the iterations are highly irregular 
-            # (e.g. a bunch of 1000fps followed by a 100 second iteration
-            #       - could happen with overwrite=False type scenarios)
-            t = time.monotonic()
-            if not flush and t - self.t < delta:
-                return
-            self.t = t
+        # If the time since the last increment is less than some delta, increment a local counter
+        # The only time this fails is if the iterations are highly irregular 
+        # (e.g. a bunch of 1000fps followed by a 100 second iteration
+        #       - could happen with overwrite=False type scenarios)
+        t = monotonic()
+        if t - self.t < self.delta:
+            return
+        self.t = t
 
         self.flush(arg, i)
 
     def flush(self, arg=..., i=...):
         """Flush the local counter to the progress bar."""
-        if self.disable or self.task_id is None:
+        task_id = self.task_id
+        if task_id is None:
             return
         pbar = self.runtime.pbar
         if pbar is None:
@@ -461,5 +466,5 @@ class _speed_increment:
                 desc = get_desc(arg, i)
                 if desc is not None:
                     kw['description'] = desc
-        pbar.update_(self.task_id, advance=self.n, **kw)
+        pbar.update_(task_id, advance=self.n, **kw)
         self.n = 0

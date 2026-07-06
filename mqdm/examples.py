@@ -201,6 +201,7 @@ def tqdm_speed_fn(t, N=1000000000):
             print("break")
             break
 
+@M.profile
 def example_tqdm_speed(t=10, transient=False, **kw):
     import time
     t0 = time.time()
@@ -214,6 +215,29 @@ def example_tqdm_speed(t=10, transient=False, **kw):
         n_workers=1,
         **kw)
     print("done in", time.time() - t0, "seconds", 123)
+
+@M.profile
+def example_mqdm_fps(t=10, N=1000000000, **kw):
+    import time
+    t0 = time.time()
+    for i in mqdm(range(N), refresh_per_second=8):
+        if time.time() - t0 > t:
+            break
+    
+    print("done", i, "in", time.time() - t0, "seconds", 123)
+
+
+@M.profile
+def example_tqdm_fps(t=10, N=1000000000, **kw):
+    from tqdm import tqdm
+    import time
+    t0 = time.time()
+    for i in tqdm(range(N)):
+        if time.time() - t0 > t:
+            break
+    
+    print("done", i, "in", time.time() - t0, "seconds", 123)
+
 
 
 def example_messy(n=3, transient=False, n_workers=5, **kw):
