@@ -26,6 +26,7 @@ class _PoolPlan:
     on_error: Literal['finish', 'cancel', 'skip']
     fn_kw: dict
     total: int
+    max_in_flight: int
     runtime: object
 
     @property
@@ -88,21 +89,58 @@ def ipool(
         with mqdm(desc=plan.desc, elapsed_speed=True, runtime=plan.runtime, **plan.bar_kw) as pbar:
             with M.executor(plan.pool_mode, bar_kw=plan.worker_bar_kw, max_workers=plan.n_workers, runtime=plan.runtime) as executor:
                 try:
-                    tasks = _submit_tasks(executor, plan, pbar)
-                    for outcome in _iter_outcomes(tasks, ordered=plan.ordered):
+                    indexed_iter = enumerate(plan.iterable)
+                    in_flight = {}
+                    ready = {}
+                    next_index = 0
+
+                    while len(in_flight) < plan.max_in_flight:
+                        task = _submit_next(executor, plan, pbar, indexed_iter)
+                        if task is None:
+                            break
+                        in_flight[task.future] = task
+
+                    while in_flight:
+                        future = next(as_completed(in_flight))
+                        task = in_flight.pop(future)
+                        outcome = _task_outcome(task)
                         pbar.update(arg=outcome.task.display_arg, i=outcome.task.index)
-                        if outcome.succeeded:
-                            yield outcome.value
-                            continue
-                        if plan.on_error == 'skip':
-                            _add_func_args_str_to_exception(outcome.error, plan.fn, outcome.task.display_arg)
-                            plan.runtime.print(''.join(traceback.format_exception(type(outcome.error), outcome.error, outcome.error.__traceback__)))
-                            continue
-                        if plan.on_error == 'cancel':
-                            _add_func_args_str_to_exception(outcome.error, plan.fn, outcome.task.display_arg)
-                            _cancel_pending(tasks, executor)
-                            raise outcome.error
-                        _append_remote_exception(remote_exceptions, outcome.error, plan.fn, outcome.task.display_arg)
+
+                        if plan.ordered:
+                            ready[task.index] = outcome
+                            while next_index in ready:
+                                outcome = ready.pop(next_index)
+                                next_index += 1
+                                if outcome.succeeded:
+                                    yield outcome.value
+                                    continue
+                                if plan.on_error == 'skip':
+                                    _add_func_args_str_to_exception(outcome.error, plan.fn, outcome.task.display_arg)
+                                    plan.runtime.print(''.join(traceback.format_exception(type(outcome.error), outcome.error, outcome.error.__traceback__)))
+                                    continue
+                                if plan.on_error == 'cancel':
+                                    _add_func_args_str_to_exception(outcome.error, plan.fn, outcome.task.display_arg)
+                                    _cancel_pending(list(in_flight.values()), executor)
+                                    raise outcome.error
+                                _append_remote_exception(remote_exceptions, outcome.error, plan.fn, outcome.task.display_arg)
+                        else:
+                            if outcome.succeeded:
+                                yield outcome.value
+                            elif plan.on_error == 'skip':
+                                _add_func_args_str_to_exception(outcome.error, plan.fn, outcome.task.display_arg)
+                                plan.runtime.print(''.join(traceback.format_exception(type(outcome.error), outcome.error, outcome.error.__traceback__)))
+                            elif plan.on_error == 'cancel':
+                                _add_func_args_str_to_exception(outcome.error, plan.fn, outcome.task.display_arg)
+                                _cancel_pending(list(in_flight.values()), executor)
+                                raise outcome.error
+                            else:
+                                _append_remote_exception(remote_exceptions, outcome.error, plan.fn, outcome.task.display_arg)
+
+                        while len(in_flight) < plan.max_in_flight:
+                            task = _submit_next(executor, plan, pbar, indexed_iter)
+                            if task is None:
+                                break
+                            in_flight[task.future] = task
                 except KeyboardInterrupt:
                     plan.runtime.pause()
                     _shutdown_for_interrupt(executor, plan.pool_mode, plan.runtime)
@@ -178,6 +216,7 @@ def _make_pool_plan(
         on_error=on_error,
         fn_kw=fn_kw,
         total=total,
+        max_in_flight=max(n_workers, 1),
         runtime=runtime,
     )
 
@@ -185,33 +224,25 @@ def _make_pool_plan(
 # ------------------------------- Task Handling ------------------------------ #
 
 
-def _submit_tasks(executor, plan: _PoolPlan, pbar: mqdm) -> list[_Task]:
-    tasks = []
-    for index, item in enumerate(plan.iterable):
-        display_arg = utils.args.from_item(item)
-        call_arg = utils.args.from_item(item)
-        call_arg.kw = {**plan.fn_kw, **call_arg.kw}
-        future = executor.submit(plan.fn, *call_arg.a, **call_arg.kw)
-        tasks.append(_Task(index=index, display_arg=display_arg, future=future))
-        pbar.set(append_total=1)
-    return tasks
+def _submit_next(executor, plan: _PoolPlan, pbar: mqdm, indexed_iter) -> _Task | None:
+    try:
+        index, item = next(indexed_iter)
+    except StopIteration:
+        return None
+
+    display_arg = utils.args.from_item(item)
+    call_arg = utils.args.from_item(item)
+    call_arg.kw = {**plan.fn_kw, **call_arg.kw}
+    future = executor.submit(plan.fn, *call_arg.a, **call_arg.kw)
+    pbar.set(append_total=1)
+    return _Task(index=index, display_arg=display_arg, future=future)
 
 
-def _iter_outcomes(tasks: list[_Task], *, ordered: bool) -> Iterable[_TaskOutcome]:
-    if ordered:
-        task_iter = tasks
-        future_map = None
-    else:
-        future_map = {task.future: task for task in tasks}
-        task_iter = as_completed(future_map)
-
-    for item in task_iter:
-        task = item if ordered else future_map[item]
-        future = task.future
-        try:
-            yield _TaskOutcome(task=task, value=future.result())
-        except Exception as error:
-            yield _TaskOutcome(task=task, error=error)
+def _task_outcome(task: _Task) -> _TaskOutcome:
+    try:
+        return _TaskOutcome(task=task, value=task.future.result())
+    except Exception as error:
+        return _TaskOutcome(task=task, error=error)
 
 
 def _cancel_pending(tasks: list[_Task], executor) -> None:

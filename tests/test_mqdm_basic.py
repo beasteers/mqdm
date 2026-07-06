@@ -1,6 +1,7 @@
 import mqdm as M
 import pickle
 import pytest
+import time
 
 
 def _runtime_worker(x):
@@ -60,6 +61,39 @@ def test_ipool_single_item_respects_on_error_skip():
     results = list(M.ipool(_boom, [1], pool_mode='sequential', n_workers=1, on_error='skip'))
 
     assert results == []
+
+
+def test_ipool_threaded_generator_streams_without_eager_submission():
+    submitted = []
+
+    def source():
+        for i in range(5):
+            submitted.append(i)
+            yield i
+
+    def work(x):
+        time.sleep(0.01)
+        return x
+
+    results = M.ipool(work, source(), pool_mode='thread', n_workers=2, ordered_=False)
+
+    first = next(results)
+
+    assert first in range(5)
+    assert len(submitted) <= 2
+
+    rest = list(results)
+    assert sorted([first, *rest]) == list(range(5))
+
+
+def test_ipool_threaded_ordered_mode_buffers_completed_results():
+    def work(x):
+        time.sleep(0.01 * (3 - x))
+        return x
+
+    results = list(M.ipool(work, [0, 1, 2], pool_mode='thread', n_workers=3, ordered_=True))
+
+    assert results == [0, 1, 2]
 
 
 def test_mqdm_restores_from_task_dict():

@@ -109,16 +109,22 @@ def iex(func):
 class cm:
     def __init__(self, func, wrapper):
         self.func = func
-        self.wrapper = contextmanager(wrapper)
-        self._ctx = None
+        self.wrapper = wrapper
+        self._manager = None
+
+    def _new_manager(self):
+        manager = self.wrapper()
+        if hasattr(manager, '__enter__') and hasattr(manager, '__exit__'):
+            return manager
+        return contextmanager(self.wrapper)()
 
     def __enter__(self):
-        self._ctx = self.wrapper().__enter__()
-        return self._ctx
+        self._manager = self._new_manager()
+        return self._manager.__enter__()
     def __exit__(self, exc_type, exc_val, exc_tb):
-        return self._ctx.__exit__(exc_type, exc_val, exc_tb)
+        return self._manager.__exit__(exc_type, exc_val, exc_tb)
     def __call__(self, *a, **kw):
-        with self.wrapper():
+        with self._new_manager():
             return self.func(*a, **kw)
 
 
@@ -135,21 +141,23 @@ def profile(func=None, **pkw):
                 with p:
                     return func(*a, **kw)
             finally:
-                M.pause(True)
-                pkw.setdefault('color', True)
-                p.print(**pkw)
+                with M.pause():
+                    pkw.setdefault('color', True)
+                    p.print(**pkw)
         return outer
     return wrapper(func) if func is not None else wrapper
 profile.kw = {}
 
 
 def timeit(func=None, **pkw):
-    @functools.wraps(func)
-    def wrapper(*a, **kw):
-        start = time.perf_counter()
-        try:
-            return func(*a, **kw)
-        finally:
-            end = time.perf_counter()
-            print(f"Function {func.__name__} took {end - start:.4f} seconds")
-    return wrapper
+    def wrap(func):
+        @functools.wraps(func)
+        def wrapper(*a, **kw):
+            start = time.perf_counter()
+            try:
+                return func(*a, **kw)
+            finally:
+                end = time.perf_counter()
+                print(f"Function {func.__name__} took {end - start:.4f} seconds")
+        return wrapper
+    return wrap(func) if func is not None else wrap
