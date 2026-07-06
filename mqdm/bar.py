@@ -251,28 +251,30 @@ class mqdm:
 
     # ----------------------------- Iteration methods ---------------------------- #
 
-    def _get_iter(self, it, **kw):
-        i = x = ...
+    def _get_iter(self, it):
         D = self.__dict__
         fast_advance = self.fast_advance
         ttl_pause_wait = self.runtime.ttl_pause_wait
+
         try:
+            ttl_pause_wait()
             i = 0
             D['_n'] = 0
             it = iter(it)
             x = next(it)
-            ttl_pause_wait()
-            fast_advance.flush(arg=x, i=i)
+            fast_advance.flush(x, i)
             yield x
-            for x in it:
-                ttl_pause_wait()
-                i += 1
-                D['_n'] = i
-                fast_advance(1, arg=x, i=i)
-                yield x
-            fast_advance(1, arg=x, i=i, flush=True)
         except StopIteration:
             fast_advance.flush()
+            return 
+
+        for x in it:
+            ttl_pause_wait()
+            i += 1
+            D['_n'] = i
+            fast_advance(1, x, i)
+            yield x
+        fast_advance(1, x, i, flush=True)
 
     def __call__(self, iter, desc=None, total=None, **kw) -> 'mqdm':
         """Iterate over an iterable with a progress bar."""
@@ -291,11 +293,10 @@ class mqdm:
         self.update(0, total=total, description=desc, **kw)
         def _with_iter():
             if self.entered:  # already called __enter__, don't call __exit__() when leaving
-                yield from self._get_iter(iter, **kw)
+                yield from self._get_iter(iter)
                 return
             with self:  # call __enter__() and __exit__()
-                yield from self._get_iter(iter, **kw)
-        # self._items = iter
+                yield from self._get_iter(iter)
         self._iter = _with_iter()
         return self
     
@@ -419,11 +420,10 @@ class _speed_increment:
     """Increment the progress bar in a very fast loop.
     Saves time by reducing inter-process IO.
     """
-    __slots__ = ('n', 'nc', 't', 'disable', 'delta', 'get_desc', 'task_id', 'runtime')
+    __slots__ = ('n', 't', 'disable', 'delta', 'get_desc', 'task_id', 'runtime')
     def __init__(self, runtime, delta=0, disable=False):
         self.delta = delta
         self.n = self.t = 0
-        self.nc = ...
         self.get_desc = None
         self.task_id = None
         self.runtime = runtime
@@ -452,20 +452,6 @@ class _speed_increment:
         pbar = self.runtime.pbar
         if pbar is None:
             return
-        pbar.update_(self.task_id, advance=self.n, **self._get_kw(arg, i))
-        self.n = 0
-        # self.nc = ...
-
-    def update_completed(self, completed: int, arg=..., i=...):
-        """Update the completed count and flush the progress bar."""
-        self.nc = completed
-        pbar = self.runtime.pbar
-        if pbar is None:
-            return
-        pbar.update_(self.task_id, completed=self.nc, **self._get_kw(arg, i))
-
-    def _get_kw(self, arg=..., i=...):
-        """Get the keyword arguments for the progress bar update."""
         kw = {}
         if i is not ...:
             get_desc = self.get_desc
@@ -473,5 +459,6 @@ class _speed_increment:
                 desc = get_desc(arg, i)
                 if desc is not None:
                     kw['description'] = desc
-        return kw
-        
+        pbar.update_(self.task_id, advance=self.n, **kw)
+        self.n = 0
+
