@@ -1,5 +1,6 @@
 from collections import deque
 import dataclasses
+from dataclasses import dataclass
 from typing import Type
 from functools import wraps
 import multiprocessing as mp
@@ -46,6 +47,36 @@ class Task(progress.Task):
     #     # self._progress.append(progress.ProgressSample(self.get_time(), self.completed))
 
 
+@dataclass
+class TaskSnapshot:
+    id: int
+    description: str
+    total: float | None
+    completed: int
+    visible: bool
+    fields: dict
+    start_time: float | None = None
+    stop_time: float | None = None
+    finished_time: float | None = None
+    finished_speed: float | None = None
+    _progress: list[tuple[float, float]] | None = None
+
+    @classmethod
+    def from_task(cls, task: progress.Task) -> 'TaskSnapshot':
+        data = {k.name: getattr(task, k.name) for k in dataclasses.fields(task) if not k.name.startswith('_')}
+        progress_samples = []
+        if task._progress:
+            progress_samples.append((task._progress[-1].timestamp, sum(s.completed for s in task._progress)))
+        return cls(**data, _progress=progress_samples)
+
+    def to_dict(self) -> dict:
+        return dataclasses.asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'TaskSnapshot':
+        return cls(**data)
+
+
 class Progress(progress.Progress):
     multiprocess = False
 
@@ -56,7 +87,7 @@ class Progress(progress.Progress):
         self._init_options = kw
         # load serialized tasks from another progress object
         if _tasks is not None:
-            self._tasks = {task_id: self._load_task(**task) for task_id, task in _tasks.items()}
+            self._tasks = {task_id: self._load_task(TaskSnapshot.from_dict(task)) for task_id, task in _tasks.items()}
         self._task_index = progress.TaskID(_task_index or 0)
         # self._pause_event = _pause_event
         # if self._pause_event is not None:  # is this necessary if start exists?
@@ -164,20 +195,20 @@ class Progress(progress.Progress):
 
     def dump_tasks(self):
         with self._lock:
-            return {task_id: self._dump_task(self._tasks[task_id]) for task_id in self._tasks}
+            return {task_id: self._dump_task(self._tasks[task_id]).to_dict() for task_id in self._tasks}
 
     def dump_task(self, task_id):
         with self._lock:
-            return self._dump_task(self._tasks[task_id])
+            return self._dump_task(self._tasks[task_id]).to_dict()
 
     def _dump_task(self, task):
-        d = {k.name: getattr(task, k.name) for k in dataclasses.fields(task) if not k.name.startswith('_')}
-        d['_progress'] = []
-        if task._progress:
-            d['_progress'].append((task._progress[-1].timestamp, sum(s.completed for s in task._progress)))
-        return d
+        return TaskSnapshot.from_task(task)
     
-    def _load_task(self, *, start_time=None, stop_time=None, start=True, _progress=None, **data):
+    def _load_task(self, snapshot: TaskSnapshot, start=True):
+        data = snapshot.to_dict()
+        _progress = data.pop('_progress') or []
+        start_time = data.pop('start_time', None)
+        stop_time = data.pop('stop_time', None)
         task = Task(_get_time=self.get_time, _lock=self._lock, **data)
         task.start_time = start_time
         task.stop_time = stop_time
@@ -194,7 +225,7 @@ class Progress(progress.Progress):
 
     def load_task(self, task: dict, start=True):
         with self._lock:
-            task = self._load_task(start=start, **task)
+            task = self._load_task(TaskSnapshot.from_dict(task), start=start)
             self._tasks[task.id] = task
             if task.id >= self._task_index:
                 self._task_index = progress.TaskID(task.id+1)
@@ -230,7 +261,7 @@ class Progress(progress.Progress):
                   visible: bool = True,
                   **fields):
         with self._lock:
-            return self._dump_task(self._new_task(description or '', start, total, completed, visible, **fields))
+            return self._dump_task(self._new_task(description or '', start, total, completed, visible, **fields)).to_dict()
 
 
 

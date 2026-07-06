@@ -2,11 +2,11 @@ import logging
 
 import mqdm as M
 from mqdm import install_logging, uninstall_logging
+from mqdm._logging import MQDMHandler
 
 
 def _count_mqdm_handlers(logger=None):
     logger = logger or logging.getLogger()
-    from mqdm._logging import MQDMHandler
     return sum(isinstance(h, MQDMHandler) for h in logger.handlers)
 
 
@@ -30,7 +30,7 @@ def test_install_logging_binds_handler_to_runtime():
 
     install_logging(level=logging.INFO, runtime=runtime)
 
-    handlers = [h for h in root.handlers if h.__class__.__name__ == 'MQDMHandler' and h.runtime is runtime]
+    handlers = [h for h in root.handlers if isinstance(h, MQDMHandler) and h.runtime is runtime]
     assert len(handlers) == 1
     assert handlers[0] in runtime.logging_handlers
     assert runtime.logging_config["level"] == logging.INFO

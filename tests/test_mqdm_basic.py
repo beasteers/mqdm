@@ -29,19 +29,20 @@ def test_mqdm_iter_counts_when_disabled():
     assert bar.total == n_total
 
 
-def test_pool_sequential_ordered_and_unordered():
+@pytest.mark.parametrize(('ordered', 'expected'), [
+    (True, [x * x for x in range(6)]),
+    (False, sorted([x * x for x in range(6)])),
+])
+def test_pool_sequential_ordered_and_unordered(ordered, expected):
     def square(x):
         return x * x
 
     data = list(range(6))
-
-    # ordered
-    ordered = list(M.ipool(square, data, pool_mode='sequential', ordered_=True, n_workers=1))
-    assert ordered == [x * x for x in data]
-
-    # unordered (should contain the same items regardless of order)
-    unordered = list(M.ipool(square, data, pool_mode='sequential', ordered_=False, n_workers=1))
-    assert sorted(unordered) == sorted([x * x for x in data])
+    results = list(M.ipool(square, data, pool_mode='sequential', ordered_=ordered, n_workers=1))
+    if ordered:
+        assert results == expected
+    else:
+        assert sorted(results) == expected
 
 
 def test_ipool_single_non_subscriptable_iterable():
@@ -85,31 +86,23 @@ def test_mqdm_can_use_custom_runtime():
     assert runtime.pbar is None
 
 
-def test_ipool_can_use_custom_runtime():
-    runtime = M.Runtime()
-
-    results = list(M.ipool(lambda x: x + 1, [1, 2], runtime=runtime, pool_mode='sequential', n_workers=1))
-
-    assert results == [2, 3]
-    assert runtime.pbar is None
-
-
-def test_ipool_thread_mode_propagates_custom_runtime():
-    runtime = M.Runtime()
-
-    results = list(M.ipool(_runtime_worker, [1, 2], runtime=runtime, pool_mode='thread', n_workers=2, squeeze_=False))
-
-    assert results == [(True, 2), (True, 3)]
-    assert runtime.pbar is None
-
-
-def test_ipool_process_mode_propagates_custom_runtime():
+@pytest.mark.parametrize(('pool_mode', 'fn', 'expected', 'n_workers', 'squeeze'), [
+    ('sequential', lambda x: x + 1, [2, 3], 1, True),
+    ('thread', _runtime_worker, [(True, 2), (True, 3)], 2, False),
+    ('process', _runtime_worker, [(True, 2), (True, 3)], 2, False),
+])
+def test_ipool_can_use_custom_runtime(pool_mode, fn, expected, n_workers, squeeze):
     runtime = M.Runtime()
 
     try:
-        results = list(M.ipool(_runtime_worker, [1, 2], runtime=runtime, pool_mode='process', n_workers=2, squeeze_=False))
+        results = list(M.ipool(fn, [1, 2], runtime=runtime, pool_mode=pool_mode, n_workers=n_workers, squeeze_=squeeze))
     except (EOFError, PermissionError, OSError) as exc:
+        if pool_mode != 'process':
+            raise
         pytest.skip(f"process-mode runtime propagation unavailable in this environment: {exc}")
 
-    assert sorted(results) == [(True, 2), (True, 3)]
+    if pool_mode == 'process':
+        assert sorted(results) == expected
+    else:
+        assert results == expected
     assert runtime.pbar is None

@@ -1,6 +1,8 @@
-import types
+import importlib
+import sys
 import mqdm
 from mqdm import utils
+executor_mod = importlib.import_module('mqdm.executor')
 
 
 def test_args_basic_call_and_from_item():
@@ -47,3 +49,8 @@ def test_fopen_iterates_lines(tmp_path):
             lines.append(line)
 
     assert ''.join(lines) == 'a\nbb\nccc\n'
+
+
+def test_process_pool_compat_flag_matches_python_version():
+    expected_module = 'mqdm._process_pool_compat' if sys.version_info < (3, 11) else 'mqdm._process_pool_keyboard'
+    assert executor_mod.process_worker_keyboard_interrupt.__module__ == expected_module
