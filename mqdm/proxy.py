@@ -279,14 +279,6 @@ class MqdmManager(SyncManager):
 MqdmManager.register('mqdm_Progress', Progress, ProgressProxy)
 
 
-def get_progress_instance(pool_mode: T_POOL_MODE=None, *columns, runtime=None, **kw):
-    runtime = runtime or M._current_runtime()
-    if pool_mode == 'process':
-        manager = runtime.get_manager()
-        return manager.mqdm_Progress(*columns, **kw)
-    return Progress(*columns, **kw)
-
-
 
 # import sys
 # import rich

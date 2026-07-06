@@ -34,8 +34,7 @@ class Runtime:
         from . import proxy
 
         kw.setdefault('refresh_per_second', 8)
-        return proxy.get_progress_instance(
-            pool_mode,
+        columns = (
             "[progress.description]{task.description}",
             progress.BarColumn(bar_width=None),
             "[progress.percentage]{task.percentage:>3.0f}%",
@@ -44,9 +43,10 @@ class Runtime:
             utils.TimeElapsedColumn(compact=True),
             progress.TimeRemainingColumn(compact=True),
             progress.SpinnerColumn(),
-            runtime=self,
-            **kw,
         )
+        if pool_mode == 'process':
+            return self.get_manager().mqdm_Progress(*columns, **kw)
+        return proxy.Progress(*columns, **kw)
 
     def get_pbar(self, pool_mode=None, start=True, **kw):
         pbar = self.pbar
