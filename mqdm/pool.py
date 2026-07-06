@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import traceback
+from collections.abc import Iterator
+from concurrent.futures import Executor, Future, as_completed
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Callable, Iterable, Literal
-from concurrent.futures import Future, as_completed
+from typing import Any, TypeVar, Callable, Literal, TypeAlias
 
 import mqdm as M
 
@@ -10,27 +13,32 @@ from . import Runtime, utils
 from .bar import mqdm
 from .executor import T_POOL_MODE, _RemoteTraceback
 
-T_DESC_FUNC = Callable[[M.args, int], str]
+T = TypeVar('T')
+R = TypeVar('R')
+
+DescFunc: TypeAlias = Callable[[utils.args, int], str]
+ExceptionKey: TypeAlias = tuple[type[BaseException], str, str]
+RemoteExceptionMap: TypeAlias = dict[ExceptionKey, list[str]]
 
 
 @dataclass
 class _PoolPlan:
-    fn: Callable
-    iterable: Iterable
-    desc: str | T_DESC_FUNC
-    bar_kw: dict
+    fn: Callable[..., R]
+    iterable: Iterator[Any]
+    desc: str | DescFunc
+    bar_kw: dict[str, Any]
     n_workers: int
     pool_mode: T_POOL_MODE
     ordered: bool
     squeeze: bool
     on_error: Literal['finish', 'cancel', 'skip']
-    fn_kw: dict
+    fn_kw: dict[str, Any]
     total: int
     max_in_flight: int
-    runtime: object
+    runtime: Runtime
 
     @property
-    def worker_bar_kw(self) -> dict:
+    def worker_bar_kw(self) -> dict[str, Any]:
         return {'transient': True, **self.bar_kw}
 
 
@@ -38,14 +46,14 @@ class _PoolPlan:
 class _Task:
     index: int
     display_arg: utils.args
-    future: Future
+    future: Future[R]
 
 
 @dataclass
 class _TaskOutcome:
     task: _Task
-    value: Any = None
-    error: Exception | None = None
+    value: R | None = None
+    error: BaseException | None = None
 
     @property
     def succeeded(self) -> bool:
@@ -58,17 +66,17 @@ class _TaskOutcome:
 
 
 def ipool(
-        fn: Callable,
-        iter: Iterable,
-        desc: str | T_DESC_FUNC='',
-        bar_kw: dict | None=None,
+        fn: Callable[..., R],
+        iter: Iterator[Any] | list[Any] | tuple[Any, ...] | set[Any] | range,
+        desc: str | DescFunc='',
+        bar_kw: dict[str, Any] | None=None,
         n_workers: int=8,
         pool_mode: T_POOL_MODE='process',
         ordered_: bool=False,
         squeeze_: bool=True,
         on_error: Literal['finish', 'cancel', 'skip']='cancel',
-        runtime: Runtime=None,
-        **kw) -> Iterable:
+        runtime: Runtime | None=None,
+        **kw: Any) -> Iterator[R]:
     """Execute a function in a process pool with a progress bar for each task."""
     plan = _make_pool_plan(
         fn=fn,
@@ -84,7 +92,7 @@ def ipool(
         runtime=runtime or M._current_runtime(),
     )
 
-    remote_exceptions = {}
+    remote_exceptions: RemoteExceptionMap = {}
     try:
         with mqdm(desc=plan.desc, elapsed_speed=True, runtime=plan.runtime, **plan.bar_kw) as pbar:
             executor = M.executor(plan.pool_mode, bar_kw=plan.worker_bar_kw, max_workers=plan.n_workers, runtime=plan.runtime)
@@ -162,17 +170,17 @@ def ipool(
 
 @wraps(ipool, ['__doc__'])
 def pool(
-        fn: Callable,
-        iter: Iterable,
-        desc: str | T_DESC_FUNC='',
-        bar_kw: dict | None=None,
+        fn: Callable[..., R],
+        iter: Iterator[Any] | list[Any] | tuple[Any, ...] | set[Any] | range,
+        desc: str | DescFunc='',
+        bar_kw: dict[str, Any] | None=None,
         n_workers: int=8,
         pool_mode: T_POOL_MODE='process',
-        results_: list=None,
+        results_: list[R] | None=None,
         ordered_: bool=True,
         squeeze_: bool=True,
-        runtime=None,
-        **kw) -> Iterable:
+        runtime: Runtime | None=None,
+        **kw: Any) -> list[R]:
     results_ = [] if results_ is None else results_
     for x in ipool(fn, iter, desc=desc, bar_kw=bar_kw, n_workers=n_workers, pool_mode=pool_mode, ordered_=ordered_, squeeze_=squeeze_, runtime=runtime, **kw):
         results_.append(x)
@@ -192,17 +200,17 @@ def pool(
 
 def _make_pool_plan(
         *,
-        fn: Callable,
-        iterable: Iterable,
-        desc: str | T_DESC_FUNC,
-        bar_kw: dict | None,
+        fn: Callable[..., R],
+        iterable: Iterator[Any] | list[Any] | tuple[Any, ...] | set[Any] | range,
+        desc: str | DescFunc,
+        bar_kw: dict[str, Any] | None,
         n_workers: int,
         pool_mode: T_POOL_MODE,
         ordered: bool,
         squeeze: bool,
         on_error: Literal['finish', 'cancel', 'skip'],
-        fn_kw: dict,
-        runtime) -> _PoolPlan:
+        fn_kw: dict[str, Any],
+        runtime: Runtime) -> _PoolPlan:
     total = utils.try_len(iterable, -1)
     if squeeze and total >= 0 and n_workers > total:
         n_workers = total
@@ -213,7 +221,7 @@ def _make_pool_plan(
 
     return _PoolPlan(
         fn=fn,
-        iterable=iterable,
+        iterable=iter(iterable),
         desc=desc,
         bar_kw=bar_kw or {},
         n_workers=n_workers,
@@ -231,7 +239,7 @@ def _make_pool_plan(
 # ------------------------------- Task Handling ------------------------------ #
 
 
-def _submit_next(executor, plan: _PoolPlan, pbar: mqdm, indexed_iter) -> _Task | None:
+def _submit_next(executor: Executor, plan: _PoolPlan, pbar: mqdm, indexed_iter: Iterator[tuple[int, Any]]) -> _Task | None:
     try:
         index, item = next(indexed_iter)
     except StopIteration:
@@ -248,18 +256,18 @@ def _submit_next(executor, plan: _PoolPlan, pbar: mqdm, indexed_iter) -> _Task |
 def _task_outcome(task: _Task) -> _TaskOutcome:
     try:
         return _TaskOutcome(task=task, value=task.future.result())
-    except Exception as error:
+    except BaseException as error:
         return _TaskOutcome(task=task, error=error)
 
 
-def _cancel_pending(tasks: list[_Task], executor) -> None:
+def _cancel_pending(tasks: list[_Task], executor: Executor) -> None:
     for task in tasks:
         if not task.future.done():
             task.future.cancel()
     executor.shutdown(wait=False, cancel_futures=True)
 
 
-def _shutdown_for_interrupt(executor, pool_mode: T_POOL_MODE, runtime) -> None:
+def _shutdown_for_interrupt(executor: Executor, pool_mode: T_POOL_MODE, runtime: Runtime) -> None:
     if pool_mode == 'process':
         try:
             for pid, process in getattr(executor, '_processes', {}).items():
@@ -273,7 +281,7 @@ def _shutdown_for_interrupt(executor, pool_mode: T_POOL_MODE, runtime) -> None:
 # ---------------------------- Exception Handling ---------------------------- #
 
 
-def _add_func_args_str_to_exception(e, fn, arg):
+def _add_func_args_str_to_exception(e: BaseException, fn: Callable[..., Any], arg: utils.args) -> BaseException:
     """Add the function name and arguments to the exception."""
     cause = getattr(e, '__cause__', None)
     if cause is not None and getattr(cause, 'tb', None) is not None:
@@ -281,7 +289,7 @@ def _add_func_args_str_to_exception(e, fn, arg):
     return e
 
 
-def _append_remote_exception(excs, e, fn, arg):
+def _append_remote_exception(excs: RemoteExceptionMap, e: BaseException, fn: Callable[..., Any], arg: utils.args) -> RemoteExceptionMap:
     tb = getattr(getattr(e, '__cause__', None), 'tb', None)
     if not isinstance(tb, str):
         tb = ''.join(traceback.format_exception(type(e), e, e.__traceback__)).rstrip()
@@ -292,9 +300,9 @@ def _append_remote_exception(excs, e, fn, arg):
     return excs
 
 
-def _combine_remote_exceptions(excs, n_fn_limit=10, n_tb_limit=10):
+def _combine_remote_exceptions(excs: RemoteExceptionMap, n_fn_limit: int = 10, n_tb_limit: int = 10) -> BaseException:
     """Merge the exception arguments into a single string."""
-    merged = []
+    merged: list[str] = []
     n_fns = sum(len(args) for args in excs.values())
     for (t, st, tb), args in sorted(excs.items(), key=lambda x: len(x[0]), reverse=True)[:n_tb_limit]:
         arg_str = '\n'.join(args[:n_fn_limit])

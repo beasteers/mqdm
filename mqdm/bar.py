@@ -1,14 +1,35 @@
-''''''
-from time import monotonic
-import sys
+from __future__ import annotations
 
-from . import Runtime
+import sys
+from collections.abc import Callable, Iterable, Iterator
+from time import monotonic
+from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar, TypedDict
+
+from .runtime import Runtime
 from . import utils
 from .executor import _get_local
 import mqdm as M
 
+if TYPE_CHECKING:
+    from .runtime import ProgressLike
 
-class mqdm:
+
+T = TypeVar('T')
+TaskId: TypeAlias = int
+DescFunc: TypeAlias = Callable[[T, int], str]
+
+
+class TaskState(TypedDict, total=False):
+    id: int
+    description: str
+    total: float | None
+    completed: int
+    visible: bool
+    start_time: float | None
+    fields: dict[str, Any]
+
+
+class mqdm(Generic[T]):
     """Create a progress bar for an iterable. (tqdm-like interface)
         
         Args:
@@ -21,34 +42,34 @@ class mqdm:
             **kw: Additional keyword arguments to pass to the progress bar.
         """
     # Local mirrors stay valid even when disabled or detached from a live task.
-    task_id = None           # stable task identity
-    pbar = None              # the progress bar instance
-    _desc = None             # the description of the progress bar
-    _total = None            # the total number of items to iterate over
-    _n = 0                   # the number of items completed
-    _iter = None             # the item iterator
-    entered = False          # whether the progress bar has called __enter__()
-    started = False          # whether the progress bar has beed started (for lazy start)
-    _task_dict = None        # detached serialized task state
-    get_desc = None          # a function to get the description
-    disable = False          # whether to disable the progress bar
-    runtime: Runtime = None  # runtime that owns this bar's state
-    fast_advance = None         # a function to update the progress bar in fast loops
+    task_id: TaskId | None = None     # stable task identity
+    pbar: ProgressLike | None = None  # the progress bar instance
+    _desc: str | None = None          # the description of the progress bar
+    _total: float | None = None       # the total number of items to iterate over
+    _n: int = 0                       # the number of items completed
+    _iter: Iterator[T] | None = None  # the item iterator
+    entered: bool = False             # whether the progress bar has called __enter__()
+    started: bool = False             # whether the progress bar has beed started (for lazy start)
+    _task_dict: TaskState | None = None  # detached serialized task state
+    get_desc: DescFunc[T] | None = None  # a function to get the description
+    disable: bool = False             # whether to disable the progress bar
+    runtime: Runtime                  # runtime that owns this bar's state
+    fast_advance: Callable[..., None] | None = None  # a function to update the progress bar in fast loops
 
     def __init__(
             self, 
-            it=None, desc=None, *, 
+            it: Iterable[T] | int | str | None=None, desc: str | DescFunc[T] | None=None, *, 
 
             # mqdm arguments
-            pool_mode=None, 
-            runtime=None,
-            disable=None, 
+            pool_mode=None,
+            runtime: Runtime | None=None,
+            disable: bool | None=None,
             # miniters=None, 
-            fast_fps_delta=None, # deprecated, use refresh_per_second instead
-            task_id=None, 
+            fast_fps_delta: float | None=None, # deprecated, use refresh_per_second instead
+            task_id: TaskId | TaskState | None=None,
 
             # progress bar arguments
-            progress_kw=None, 
+            progress_kw: dict[str, Any] | None=None,
             auto_refresh: bool = True,
             refresh_per_second: float = 8,
             speed_estimate_period: float = 60.0,
@@ -57,7 +78,7 @@ class mqdm:
             expand: bool = False,
 
             # rich task arguments
-            init_kw=None, 
+            init_kw: dict[str, Any] | None=None,
             start: bool = True,
             total: float|None = None,
             # leave: bool = True,
@@ -66,8 +87,8 @@ class mqdm:
             visible: bool = True,
             # refresh: bool = False,
             bytes: bool = False,
-            **fields,
-        ):
+            **fields: Any,
+        ) -> None:
         if isinstance(it, str) and desc is None:  # infer string as description
             it, desc = None, it
 
@@ -103,19 +124,19 @@ class mqdm:
 
     def _init_runtime(
             self, *,
-            runtime,
-            disable,
-            fast_fps_delta,
-            progress_kw,
-            auto_refresh,
-            refresh_per_second,
-            speed_estimate_period,
-            redirect_stdout,
-            redirect_stderr,
-            expand):
+            runtime: Runtime | None,
+            disable: bool | None,
+            fast_fps_delta: float,
+            progress_kw: dict[str, Any] | None,
+            auto_refresh: bool,
+            refresh_per_second: float,
+            speed_estimate_period: float,
+            redirect_stdout: bool,
+            redirect_stderr: bool,
+            expand: bool) -> None:
         self.runtime = runtime or _get_local('runtime', M._current_runtime())
         self.disable = self.disable if disable is None else disable
-        self._progress_kw = {
+        self._progress_kw: dict[str, Any] = {
             **(progress_kw or {}),
             "auto_refresh": auto_refresh,
             "refresh_per_second": refresh_per_second,
@@ -128,16 +149,16 @@ class mqdm:
     def _init_task(
             self, *,
             pool_mode,
-            task_id,
-            start,
-            desc,
-            total,
-            init_kw,
-            completed,
-            visible,
-            bytes,
-            **fields):
-        bind_kw = {}
+            task_id: TaskId | TaskState | None,
+            start: bool,
+            desc: str | DescFunc[T] | None,
+            total: float | None,
+            init_kw: dict[str, Any] | None,
+            completed: int,
+            visible: bool,
+            bytes: bool,
+            **fields: Any) -> tuple[bool, dict[str, Any]]:
+        bind_kw: dict[str, Any] = {}
         init_kw = self._process_args(initial=True, **{
             **_get_local('defaults', {}), 
             **(init_kw or {}),
@@ -174,14 +195,20 @@ class mqdm:
 
         return start, bind_kw
 
-    def _init_new_task(self, pbar, init_kw, start):
+    def _init_new_task(self, pbar: ProgressLike, init_kw: dict[str, Any], start: bool) -> bool:
         init_kw.setdefault('total', self._total)
         init_kw.setdefault('description', '')
         self.task_id = pbar.add_task(**init_kw)
         return start
 
-    def _init_existing_task(self, pbar, task_id, init_kw, start):
-        bind_kw = {}
+    def _init_existing_task(
+        self,
+        pbar: ProgressLike,
+        task_id: TaskId | TaskState,
+        init_kw: dict[str, Any],
+        start: bool,
+    ) -> tuple[bool, dict[str, Any]]:
+        bind_kw: dict[str, Any] = {}
         if isinstance(task_id, dict):
             self._task_dict = task_dict = task_id
             task_id = task_id['id']
@@ -205,7 +232,7 @@ class mqdm:
         return f'<mqdm[{self.task_id}]({self._n}/{self._total}, {self._desc or ""!r})>'
 
     def __getstate__(self):
-        state = self.__dict__.copy()
+        state: dict[str, Any] = self.__dict__.copy()
         state['get_desc'] = None  # cannot pickle lambda functions
         state['fast_advance'] = None  # cannot pickle closures
         # state['_items'] = None  # cannot pickle iterators
@@ -221,28 +248,32 @@ class mqdm:
 
     def __len__(self) -> int:
         """Get the total number of items."""
-        return self._total or 0
+        return int(self._total or 0)
 
-    def __iter__(self) -> 'mqdm':
+    def __iter__(self) -> Iterator[T]:
+        if self._iter is None:
+            raise TypeError("mqdm object is not bound to an iterable.")
         return self._iter
 
-    def __next__(self):
+    def __next__(self) -> T:
+        if self._iter is None:
+            raise TypeError("mqdm object is not bound to an iterable.")
         return next(self._iter)
     
     # ----------------------------- Lifecycle methods ---------------------------- #
     
-    def __enter__(self) -> 'mqdm':
+    def __enter__(self) -> mqdm[T]:
         self.entered = True
         return self.open()
 
-    def __exit__(self, t, e, tb):
+    def __exit__(self, t: object, e: BaseException | None, tb: object) -> None:
         self.entered = False
         self.close()
         pbar = self.runtime.pbar
         if isinstance(e, KeyboardInterrupt) and pbar is not None:
             pbar.stop()
 
-    def __del__(self):
+    def __del__(self) -> None:
         try:
             if sys.meta_path is None:
                 return 
@@ -252,10 +283,8 @@ class mqdm:
 
     # ----------------------------- Iteration methods ---------------------------- #
 
-
-
-    def _get_fast_advance(self):
-        D = self.__dict__
+    def _get_fast_advance(self) -> Callable[..., None]:
+        D: dict[str, Any] = self.__dict__
         disable = self.disable
         ttl_pause_wait = utils.fn_throttle(self.runtime.pause_event.wait, self.runtime.pause_wait_ttl_seconds)
         delta = 1 / (self._progress_kw['refresh_per_second'] or 8)
@@ -263,13 +292,13 @@ class mqdm:
         task_id = self.task_id
         get_desc = self.get_desc
 
-        def disabled_update(x=..., n=1, flush=False, wait=True):
+        def disabled_update(x: T | object=..., n: int=1, flush: bool=False, wait: bool=True) -> None:
             D['_n'] += n
             return
 
         n_acc = 0
         t_last = 0
-        def update(x=..., n=1, flush=False, wait=True):
+        def update(x: T | object=..., n: int=1, flush: bool=False, wait: bool=True) -> None:
             nonlocal n_acc
             n_acc += n
 
@@ -281,7 +310,7 @@ class mqdm:
             if t - t_last >= delta or flush:
                 do_flush(t, x, wait)
 
-        def do_flush(t, x, wait):
+        def do_flush(t: float, x: T | object, wait: bool) -> None:
             nonlocal t_last, n_acc
             D['_n'] += n_acc
 
@@ -306,13 +335,13 @@ class mqdm:
         # return update
         return disabled_update if disable else update
     
-    def _reset_fast_advance(self):
+    def _reset_fast_advance(self) -> Callable[..., None]:
         if self.fast_advance is not None:
             self.fast_advance(n=0, flush=True, wait=False)
         self.fast_advance = self._get_fast_advance()
         return self.fast_advance
 
-    def _get_iter(self, it):
+    def _get_iter(self, it: Iterable[T]) -> Iterator[T]:
         with utils.noopcontext() if self.entered else self:
             update = self._reset_fast_advance()
             it = iter(it)
@@ -329,7 +358,13 @@ class mqdm:
                 yield x
             update(x, 0, flush=True)
 
-    def __call__(self, iter, desc=None, total=None, **kw) -> 'mqdm':
+    def __call__(
+        self,
+        iter: Iterable[T] | int | str | None,
+        desc: str | DescFunc[T] | None=None,
+        total: float | None=None,
+        **kw: Any,
+    ) -> mqdm[T]:
         """Iterate over an iterable with a progress bar."""
         if isinstance(iter, str) and desc is None:  # infer string as description
             iter, desc = None, iter
@@ -349,7 +384,7 @@ class mqdm:
     
     # ------------------------------ Internal methods ----------------------------- #
 
-    def _attach(self):
+    def _attach(self) -> None:
         """Attach local state to a live runtime progress task."""
         if self.disable: return
 
@@ -361,7 +396,7 @@ class mqdm:
         self.set(total=self._total)
         self._reset_fast_advance()
 
-    def _detach(self, remove=None, soft=False):
+    def _detach(self, remove: bool | None=None, soft: bool=False) -> None:
         """Detach from the live task while preserving local task state."""
         pbar = self.runtime.pbar
         if self.disable or pbar is None: return
@@ -373,8 +408,10 @@ class mqdm:
         self.runtime.remove_instance(self)
         self.runtime.clear_pbar(strict=False, soft=soft)
 
-    def _set_task_dict(self, kw):
+    def _set_task_dict(self, kw: dict[str, Any]) -> None:
         task = self._task_dict
+        if task is None:
+            return
         task['completed'] = self._n
         if 'total' in kw:
             task['total'] = kw['total']
@@ -388,7 +425,15 @@ class mqdm:
             if key not in {'advance', 'completed', 'total', 'description', 'visible', 'refresh'}:
                 fields[key] = value
 
-    def _process_args(self, *, initial=False, append_total=None, arg=..., i: int=None, **kw) -> dict:
+    def _process_args(
+        self,
+        *,
+        initial: bool=False,
+        append_total: int | None=None,
+        arg: T | object=...,
+        i: int | None=None,
+        **kw: Any,
+    ) -> dict[str, Any]:
         """Normalize task fields and keep local mirrors in sync."""
         kw = {k: v for k, v in kw.items() if v is not ...}
         if 'leave' in kw:  # tqdm compatibility
@@ -435,7 +480,7 @@ class mqdm:
     @property
     def total(self) -> int|None:
         """The total number of items to iterate over."""
-        return self._total
+        return int(self._total) if self._total is not None else None
     
     @total.setter
     def total(self, total: int|None):
@@ -444,32 +489,32 @@ class mqdm:
 
     # ------------------------------ public methods ------------------------------ #
 
-    def open(self):
+    def open(self) -> mqdm[T]:
         """Add the task to the progress bar."""
         self.entered = True
         self._attach()
         return self
 
-    def close(self, remove=None):
+    def close(self, remove: bool | None=None) -> mqdm[T]:
         """Remove the task from the progress bar."""
         self.entered = False
         self._detach(remove=remove)
         return self
 
-    def print(self, *a, **kw) -> 'mqdm':
+    def print(self, *a: Any, **kw: Any) -> mqdm[T]:
         """Print above the progress bar."""
         self.runtime.print(*a, **kw)
         return self
 
-    def set_description(self, desc) -> 'mqdm':
+    def set_description(self, desc: str) -> mqdm[T]:
         """Set the description of the progress bar."""
         return self.set(description=desc)
 
-    def update(self, advance: int=1, **kw) -> 'mqdm':
+    def update(self, advance: int=1, **kw: Any) -> mqdm[T]:
         """Increment the progress bar."""
         return self.set(advance=advance, **kw)
 
-    def set(self, **kw) -> 'mqdm':
+    def set(self, **kw: Any) -> mqdm[T]:
         """Update progress bar fields."""
         kw = self._process_args(**kw)
         if self.disable: return self
@@ -485,4 +530,3 @@ class mqdm:
             self._set_task_dict(kw)
             return self
         raise RuntimeError("Cannot update mqdm bar without an attached progress bar or detached task state.")
-        return self
