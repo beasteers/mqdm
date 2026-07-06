@@ -40,6 +40,14 @@ _LOCAL_EVENT_TYPE = type(threading.Event())
 
 
 class Runtime:
+    """Owns progress, pause, and logging state for one mqdm session.
+
+    A runtime coordinates the active progress display, worker-process plumbing,
+    and optional logging integration. Most code can rely on the current runtime
+    implicitly, but constructing a separate ``Runtime`` is useful when you want
+    isolated progress or logging behavior.
+    """
+
     def __init__(self) -> None:
         self.pbar: ProgressLike | None = None
         self.manager: MqdmManager | None = None
@@ -220,6 +228,19 @@ class Runtime:
         markup: bool = True,
         formatter: Formatter | None = None,
     ) -> MQDMHandler:
+        """Attach an ``MQDMHandler`` to a logger for this runtime.
+
+        Args:
+            logger: Logger to attach to. Defaults to the root logger.
+            level: Optional handler level to set on the attached handler.
+            capture_warnings: Whether to route Python warnings through logging
+                for this runtime.
+            markup: Whether to allow Rich markup in emitted log messages.
+            formatter: Optional formatter for the handler.
+
+        Returns:
+            The attached or reused ``MQDMHandler`` instance.
+        """
         from ._logging import MQDMHandler, capture_warnings as _capture_warnings, release_warnings as _release_warnings
 
         logger = logger or logging.getLogger()
@@ -242,6 +263,11 @@ class Runtime:
         return handler
 
     def uninstall_logging(self, logger: Logger | None = None) -> None:
+        """Remove this runtime's logging handler from a logger.
+
+        Args:
+            logger: Logger to detach from. Defaults to the root logger.
+        """
         from ._logging import MQDMHandler, release_warnings as _release_warnings
 
         logger = logger or logging.getLogger()

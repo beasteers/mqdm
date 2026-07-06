@@ -30,31 +30,52 @@ class TaskState(TypedDict, total=False):
 
 
 class mqdm(Generic[T]):
-    """Create a progress bar for an iterable. (tqdm-like interface)
-        
-        Args:
-            iter (Iterable): The iterable to iterate over.
-            desc (str): The description of the progress bar.
-            bytes (bool): Whether to show bytes transferred.
-            pbar (rich.progress.Progress): An existing progress bar to use.
-            leave (bool): Whether to keep/remove the progress bar after completion.
-            disable (bool): Whether to disable the progress bar.
-            **kw: Additional keyword arguments to pass to the progress bar.
-        """
+    """Wrap an iterable or manual task with an mqdm progress bar.
+
+    The interface is intentionally close to ``tqdm`` while using Rich for
+    rendering and mqdm's runtime model for worker-safe output.
+
+    Args:
+        it: Iterable to wrap. If an ``int`` is provided, it is treated as
+            ``range(it)``.
+        desc: Static description or per-item description callback.
+        pool_mode: Optional worker mode hint used when binding to pooled work.
+        runtime: Runtime that should own this bar. Defaults to the current
+            runtime.
+        disable: Whether rendering should be disabled while counters continue to
+            update.
+        task_id: Existing task identifier or detached task state to restore.
+        progress_kw: Extra keyword arguments for the underlying Rich progress
+            instance.
+        auto_refresh: Whether the underlying progress should refresh
+            automatically.
+        refresh_per_second: Maximum refresh rate for the progress display.
+        speed_estimate_period: Window used for speed estimation.
+        redirect_stdout: Whether Rich should redirect standard output.
+        redirect_stderr: Whether Rich should redirect standard error.
+        expand: Whether the underlying Rich progress should expand horizontally.
+        init_kw: Extra keyword arguments for the initial task creation.
+        start: Whether the task should start immediately.
+        total: Optional total item count.
+        completed: Initial completed count.
+        visible: Whether the task should be visible.
+        bytes: Whether to render byte-oriented columns.
+        **fields: Additional task fields forwarded to Rich.
+    """
     # Local mirrors stay valid even when disabled or detached from a live task.
-    task_id: TaskId | None = None     # stable task identity
     pbar: ProgressLike | None = None  # the progress bar instance
-    _desc: str | None = None          # the description of the progress bar
-    _total: float | None = None       # the total number of items to iterate over
+    task_id: TaskId | None = None     # stable task identity
     _n: int = 0                       # the number of items completed
     _iter: Iterator[T] | None = None  # the item iterator
+    _total: float | None = None       # the total number of items to iterate over
+    _desc: str | None = None          # the description of the progress bar
+    disable: bool = False             # whether to disable the progress bar
     entered: bool = False             # whether the progress bar has called __enter__()
     started: bool = False             # whether the progress bar has beed started (for lazy start)
     _task_dict: TaskState | None = None  # detached serialized task state
     get_desc: DescFunc[T] | None = None  # a function to get the description
-    disable: bool = False             # whether to disable the progress bar
-    runtime: Runtime                  # runtime that owns this bar's state
     fast_advance: Callable[..., None] | None = None  # a function to update the progress bar in fast loops
+    runtime: Runtime                  # runtime that owns this bar's state
 
     def __init__(
             self, 
@@ -62,10 +83,8 @@ class mqdm(Generic[T]):
 
             # mqdm arguments
             pool_mode=None,
-            runtime: Runtime | None=None,
             disable: bool | None=None,
-            # miniters=None, 
-            fast_fps_delta: float | None=None, # deprecated, use refresh_per_second instead
+            runtime: Runtime | None=None,
             task_id: TaskId | TaskState | None=None,
 
             # progress bar arguments
@@ -79,14 +98,14 @@ class mqdm(Generic[T]):
 
             # rich task arguments
             init_kw: dict[str, Any] | None=None,
-            start: bool = True,
+            completed: int = 0,
             total: float|None = None,
+            start: bool = True,
+            visible: bool = True,
+            bytes: bool = False,
             # leave: bool = True,
             # transient: bool = False,
-            completed: int = 0,
-            visible: bool = True,
             # refresh: bool = False,
-            bytes: bool = False,
             **fields: Any,
         ) -> None:
         if isinstance(it, str) and desc is None:  # infer string as description
@@ -95,7 +114,6 @@ class mqdm(Generic[T]):
         self._init_runtime(
             runtime=runtime,
             disable=disable,
-            fast_fps_delta=fast_fps_delta or (1/(refresh_per_second or 8)),
             progress_kw=progress_kw,
             auto_refresh=auto_refresh,
             refresh_per_second=refresh_per_second,
@@ -126,7 +144,6 @@ class mqdm(Generic[T]):
             self, *,
             runtime: Runtime | None,
             disable: bool | None,
-            fast_fps_delta: float,
             progress_kw: dict[str, Any] | None,
             auto_refresh: bool,
             refresh_per_second: float,

@@ -2,7 +2,7 @@ from contextlib import contextmanager
 
 import mqdm as M  # self
 
-from .runtime import Runtime, _all_runtimes, _current_runtime, _runtime
+from .runtime import Runtime, _current_runtime, _runtime
 
 
 @contextmanager
@@ -72,7 +72,7 @@ def uninstall_logging(*, logger=None, runtime=None):
 
 # ----------------------------------- Utils ---------------------------------- #
 
-from .executor import Initializer, T_POOL_MODE, executor
+from .executor import T_POOL_MODE, executor
 from .utils import args, fn, fopen, ratelimit
 from ._logging import _install_from_config, capture_warnings, release_warnings
 

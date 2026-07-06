@@ -77,7 +77,28 @@ def ipool(
         on_error: Literal['finish', 'cancel', 'skip']='cancel',
         runtime: Runtime | None=None,
         **kw: Any) -> Iterator[R]:
-    """Execute a function in a process pool with a progress bar for each task."""
+    """Run a function over an iterable with pooled workers and progress updates.
+
+    Args:
+        fn: Function to call for each item.
+        iter: Items to process. Each item is passed to ``fn`` directly unless it
+            is wrapped in ``mqdm.args``.
+        desc: Static description or callback used for the top-level progress bar.
+        bar_kw: Extra keyword arguments forwarded to the top-level progress bar.
+        n_workers: Maximum number of workers to use.
+        pool_mode: Execution mode: ``"process"``, ``"thread"``, or
+            ``"sequential"``.
+        ordered_: Whether results should be yielded in input order.
+        squeeze_: Whether to reduce worker count for very small inputs.
+        on_error: Error policy. ``"cancel"`` raises immediately, ``"skip"``
+            logs and continues, and ``"finish"`` aggregates failures and raises
+            after submitted work completes.
+        runtime: Runtime that should own the progress display.
+        **kw: Extra keyword arguments forwarded to ``fn`` for every item.
+
+    Yields:
+        Results from ``fn``.
+    """
     plan = _make_pool_plan(
         fn=fn,
         iterable=iter,
@@ -181,6 +202,25 @@ def pool(
         squeeze_: bool=True,
         runtime: Runtime | None=None,
         **kw: Any) -> list[R]:
+    """Collect ``ipool`` results into a list.
+
+    Args:
+        fn: Function to call for each item.
+        iter: Items to process.
+        desc: Static description or callback used for the top-level progress bar.
+        bar_kw: Extra keyword arguments forwarded to the top-level progress bar.
+        n_workers: Maximum number of workers to use.
+        pool_mode: Execution mode: ``"process"``, ``"thread"``, or
+            ``"sequential"``.
+        results_: Optional list to append results into.
+        ordered_: Whether results should be returned in input order.
+        squeeze_: Whether to reduce worker count for very small inputs.
+        runtime: Runtime that should own the progress display.
+        **kw: Extra keyword arguments forwarded to ``fn`` for every item.
+
+    Returns:
+        A list of collected results.
+    """
     results_ = [] if results_ is None else results_
     for x in ipool(fn, iter, desc=desc, bar_kw=bar_kw, n_workers=n_workers, pool_mode=pool_mode, ordered_=ordered_, squeeze_=squeeze_, runtime=runtime, **kw):
         results_.append(x)
