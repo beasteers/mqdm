@@ -180,6 +180,39 @@ class Runtime:
         self.shutdown_event = shutdown_event
         self.logging_config = logging_config
 
+    def install_logging(self, logger=None, *, level=None, capture_warnings=False, markup=True, formatter=None):
+        import logging as _logging
+        from ._logging import MQDMHandler, capture_warnings as _capture_warnings, release_warnings as _release_warnings
+
+        logger = logger or _logging.getLogger()
+        handler = MQDMHandler.ensure_on_logger(logger, self, formatter=formatter, markup=markup)
+        if level is not None:
+            handler.setLevel(level)
+
+        if capture_warnings:
+            _capture_warnings(runtime=self)
+        else:
+            _release_warnings(runtime=self)
+
+        self.logging_config = {
+            "level": level,
+            "markup": markup,
+            "capture_warnings": capture_warnings,
+            "formatter_fmt": (formatter._fmt if formatter else None),
+            "formatter_datefmt": (formatter.datefmt if formatter else None),
+        }
+        return handler
+
+    def uninstall_logging(self, logger=None):
+        import logging as _logging
+        from ._logging import MQDMHandler, release_warnings as _release_warnings
+
+        logger = logger or _logging.getLogger()
+        MQDMHandler.remove_from_logger(logger, self)
+        if self.capture_warnings:
+            _release_warnings(runtime=self)
+        self.logging_config = None
+
     def get_manager(self):
         if self.manager is not None:
             return self.manager
@@ -265,6 +298,24 @@ def pause(paused=True):
     return _current_runtime().pause(paused)
 
 
+def install_logging(logger=None, *, level=None, capture_warnings=False, markup=True, formatter=None, runtime=None):
+    """Install an MQDMHandler on a logger for a runtime."""
+    runtime = runtime or _current_runtime()
+    return runtime.install_logging(
+        logger=logger,
+        level=level,
+        capture_warnings=capture_warnings,
+        markup=markup,
+        formatter=formatter,
+    )
+
+
+def uninstall_logging(*, logger=None, runtime=None):
+    """Remove an MQDMHandler from a logger for a runtime."""
+    runtime = runtime or _current_runtime()
+    return runtime.uninstall_logging(logger=logger)
+
+
 class _pause_exit:
     def __init__(self, prev_paused):
         self.prev_paused = prev_paused
@@ -296,7 +347,11 @@ M.input = inp
 
 from .bar import mqdm
 from .pool import pool, ipool
-from ._logging import _install_from_config, install as install_logging, uninstall as uninstall_logging
+from ._logging import (
+    _install_from_config,
+    capture_warnings,
+    release_warnings,
+)
 
 
 mqpool = pool

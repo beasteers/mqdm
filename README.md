@@ -181,16 +181,22 @@ with mqdm(desc='[bold blue]Very important work', total=len(it)) as pbar:
 ```
 
 ### Logging and warnings
-Route Python logging and warnings through the progress-friendly console so bars don't break:
+Route Python logging through the progress-friendly console so bars don't break:
 
 ```python
 import logging
-from mqdm import install_logging
-install_logging()
+import mqdm
+from mqdm import capture_warnings
+
+runtime = mqdm._current_runtime()
+runtime.install_logging(level=logging.INFO)
 
 
 log = logging.getLogger(__name__)
 log.info("hello")
+
+# Warning capture is a separate opt-in because it changes global state.
+capture_warnings()
 
 
 def work(n, sleep=0.05):

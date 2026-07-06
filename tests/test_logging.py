@@ -2,7 +2,7 @@ import logging
 import warnings
 
 import mqdm as M
-from mqdm import install_logging, uninstall_logging
+from mqdm import capture_warnings, install_logging, release_warnings, uninstall_logging
 from mqdm._logging import MQDMHandler
 
 
@@ -19,6 +19,8 @@ def test_install_uninstall_logging_handler_idempotent():
     install_logging(level=logging.INFO)
     n1 = _count_mqdm_handlers(root)
     assert n1 == n0 + 1
+    handler = next(h for h in root.handlers if isinstance(h, MQDMHandler) and h.runtime is M._current_runtime())
+    assert handler.level == logging.INFO
     uninstall_logging()
     n2 = _count_mqdm_handlers(root)
     assert n2 == n0
@@ -29,16 +31,31 @@ def test_install_logging_binds_handler_to_runtime():
     runtime = M.Runtime()
     uninstall_logging()
 
-    install_logging(level=logging.INFO, runtime=runtime)
+    handler = runtime.install_logging(logger=root, level=logging.INFO)
 
+    assert isinstance(handler, MQDMHandler)
     handlers = [h for h in root.handlers if isinstance(h, MQDMHandler) and h.runtime is runtime]
-    assert len(handlers) == 1
-    assert handlers[0] in runtime.logging_handlers
+    assert handlers == [handler]
+    assert handler in runtime.logging_handlers
     assert runtime.logging_config["level"] == logging.INFO
 
-    uninstall_logging(runtime=runtime)
-    assert handlers[0] not in root.handlers
+    runtime.uninstall_logging(logger=root)
+    assert handler not in root.handlers
     assert runtime.logging_config is None
+
+
+def test_install_logging_does_not_capture_warnings_by_default():
+    runtime = M.Runtime()
+    uninstall_logging(runtime=runtime)
+
+    original_showwarning = warnings.showwarning
+    try:
+        runtime.install_logging()
+        assert warnings.showwarning is original_showwarning
+        assert runtime.capture_warnings is False
+        assert runtime.logging_config["capture_warnings"] is False
+    finally:
+        runtime.uninstall_logging()
 
 
 def test_warning_capture_is_released_only_after_last_runtime_uninstalls():
@@ -50,15 +67,49 @@ def test_warning_capture_is_released_only_after_last_runtime_uninstalls():
 
     original_showwarning = warnings.showwarning
     try:
-        install_logging(runtime=rt1)
-        install_logging(runtime=rt2)
+        rt1.install_logging(capture_warnings=True)
+        rt2.install_logging(capture_warnings=True)
         assert warnings.showwarning.__module__ == "logging"
 
-        uninstall_logging(runtime=rt1)
+        rt1.uninstall_logging()
         assert warnings.showwarning.__module__ == "logging"
 
-        uninstall_logging(runtime=rt2)
+        rt2.uninstall_logging()
         assert warnings.showwarning is original_showwarning
     finally:
-        uninstall_logging(runtime=rt1)
-        uninstall_logging(runtime=rt2)
+        rt1.uninstall_logging()
+        rt2.uninstall_logging()
+
+
+def test_capture_warning_helpers_toggle_runtime_state():
+    runtime = M.Runtime()
+    uninstall_logging(runtime=runtime)
+
+    original_showwarning = warnings.showwarning
+    try:
+        capture_warnings(runtime=runtime)
+        assert runtime.capture_warnings is True
+        assert warnings.showwarning.__module__ == "logging"
+
+        release_warnings(runtime=runtime)
+        assert runtime.capture_warnings is False
+        assert warnings.showwarning is original_showwarning
+    finally:
+        release_warnings(runtime=runtime)
+        uninstall_logging(runtime=runtime)
+
+
+def test_ensure_on_logger_is_idempotent_and_updates_markup():
+    root = logging.getLogger()
+    runtime = M.Runtime()
+    uninstall_logging(runtime=runtime)
+
+    try:
+        first = MQDMHandler.ensure_on_logger(root, runtime, markup=True)
+        second = MQDMHandler.ensure_on_logger(root, runtime, markup=False)
+
+        assert first is second
+        assert second.markup is False
+        assert sum(isinstance(h, MQDMHandler) and h.runtime is runtime for h in root.handlers) == 1
+    finally:
+        uninstall_logging(runtime=runtime)
