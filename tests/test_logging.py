@@ -9,9 +9,8 @@ from mqdm._logging import MQDMHandler, capture_warnings, release_warnings
 
 
 def _reset_warning_capture_state():
-    warnings.showwarning = warnings._showwarning_orig
+    logging.captureWarnings(False)
     logging_mod._warning_capture_refcount = 0
-    logging_mod._warnings_showwarning = None
 
 
 def _count_mqdm_handlers(logger=None):
@@ -96,10 +95,10 @@ def test_warning_capture_is_released_only_after_last_runtime_uninstalls():
     try:
         rt1.install_logging(capture_warnings=True)
         rt2.install_logging(capture_warnings=True)
-        assert warnings.showwarning is logging_mod._showwarning
+        assert warnings.showwarning is not original_showwarning
 
         rt1.uninstall_logging()
-        assert warnings.showwarning is logging_mod._showwarning
+        assert warnings.showwarning is not original_showwarning
 
         rt2.uninstall_logging()
         assert warnings.showwarning is original_showwarning
@@ -118,7 +117,7 @@ def test_process_only_warning_capture_activates_in_worker_install(monkeypatch):
         runtime.install_logging(level=logging.INFO)
         monkeypatch.setattr(runtime_mod.utils, "is_main_process", lambda: False)
         runtime.install_pool_worker()
-        assert warnings.showwarning is logging_mod._showwarning
+        assert warnings.showwarning is not original_showwarning
         assert runtime.capture_warnings is True
     finally:
         release_warnings(runtime=runtime)
@@ -177,7 +176,7 @@ def test_capture_warning_helpers_toggle_runtime_state():
     try:
         capture_warnings(runtime=runtime)
         assert runtime.capture_warnings is True
-        assert warnings.showwarning is logging_mod._showwarning
+        assert warnings.showwarning is not original_showwarning
 
         release_warnings(runtime=runtime)
         assert runtime.capture_warnings is False

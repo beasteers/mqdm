@@ -1,6 +1,4 @@
 import logging
-import warnings
-from typing import Any, Callable
 
 import mqdm as M
 
@@ -79,41 +77,22 @@ def _make_default_formatter() -> logging.Formatter:
 
 
 _warning_capture_refcount = 0
-_warnings_showwarning: Callable[..., Any] | None = None
 
 
 def _acquire_warning_capture() -> None:
-    global _warnings_showwarning
     global _warning_capture_refcount
     if _warning_capture_refcount == 0:
-        warnings.simplefilter("default")
-        if _warnings_showwarning is None:
-            _warnings_showwarning = warnings.showwarning
-        warnings.showwarning = _showwarning
+        logging.captureWarnings(True)
     _warning_capture_refcount += 1
 
 
 def _release_warning_capture() -> None:
-    global _warnings_showwarning
     global _warning_capture_refcount
     if _warning_capture_refcount == 0:
         return
     _warning_capture_refcount -= 1
     if _warning_capture_refcount == 0:
-        if _warnings_showwarning is not None:
-            warnings.showwarning = _warnings_showwarning
-            _warnings_showwarning = None
-
-
-def _showwarning(message, category, filename, lineno, file=None, line=None) -> None:
-    if file is not None:
-        if _warnings_showwarning is not None:
-            _warnings_showwarning(message, category, filename, lineno, file, line)
-        return
-
-    rendered = warnings.formatwarning(message, category, filename, lineno, line)
-    logger = logging.getLogger("py.warnings")
-    logger.warning("%s", rendered)
+        logging.captureWarnings(False)
 
 
 def capture_warnings(runtime=None) -> None:
