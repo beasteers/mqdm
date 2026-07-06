@@ -259,7 +259,7 @@ class mqdm:
         try:
             ttl_pause_wait()
             i = 0
-            D['_n'] = 0
+            D['_n'] = 1
             it = iter(it)
             x = next(it)
             fast_advance.flush(x, i)
@@ -271,7 +271,7 @@ class mqdm:
         for x in it:
             ttl_pause_wait()
             i += 1
-            D['_n'] = i
+            D['_n'] = i + 1
             fast_advance(1, x, i)
             yield x
         fast_advance(1, x, i, flush=True)
@@ -449,6 +449,8 @@ class _speed_increment:
 
     def flush(self, arg=..., i=...):
         """Flush the local counter to the progress bar."""
+        if self.disable or self.task_id is None:
+            return
         pbar = self.runtime.pbar
         if pbar is None:
             return
@@ -461,4 +463,3 @@ class _speed_increment:
                     kw['description'] = desc
         pbar.update_(self.task_id, advance=self.n, **kw)
         self.n = 0
-
