@@ -29,23 +29,6 @@ class Task(progress.Task):
                 total_time = self.elapsed
             return self.completed / total_time if total_time else total_time
 
-            # total_time = progress[-1].timestamp - progress[0].timestamp
-            # if total_time == 0:
-            #     return None
-            # iter_progress = iter(progress)
-            # next(iter_progress)
-            # total_completed = sum(sample.completed for sample in iter_progress)
-            # speed = total_completed / total_time
-            # # if self.id == 0:
-            # #     print(progress)
-            # #     print("speed p", speed, total_completed, total_time)
-            # return speed
-
-    # def reset(self):
-    #     super().reset()
-    #     self._progress.append(progress.ProgressSample(self.start_time, self.completed))
-    #     # self._progress.append(progress.ProgressSample(self.get_time(), self.completed))
-
 
 @dataclass
 class TaskSnapshot:
@@ -83,15 +66,10 @@ class Progress(progress.Progress):
     def __init__(self, *columns, _tasks=None, _task_index=None, _pause_event=None, **kw):
         super().__init__(*columns, **kw)
 
-        # save init options in case we need to recreate the object in a different process
         self._init_options = kw
-        # load serialized tasks from another progress object
         if _tasks is not None:
             self._tasks = {task_id: self._load_task(TaskSnapshot.from_dict(task)) for task_id, task in _tasks.items()}
         self._task_index = progress.TaskID(_task_index or 0)
-        # self._pause_event = _pause_event
-        # if self._pause_event is not None:  # is this necessary if start exists?
-        #     self._pause_event.set()
 
     def print(self, *args, **kw):
         """Print to the console."""
@@ -129,23 +107,10 @@ class Progress(progress.Progress):
         with self._lock:
             self._start_task(self._tasks[task_id])
 
-    # def stop_task(self, task_id):
-    #     return super().stop_task(task_id)
-
     def clear(self):
         """Clear the progress bar."""
         with self._lock:
             self._tasks.clear()
-    
-    # def start(self):
-    #     if self._pause_event is not None:
-    #         self._pause_event.set()
-    #     super().start()
-    
-    # def stop(self):
-    #     if self._pause_event is not None:
-    #         self._pause_event.clear()
-    #     super().stop()
 
     def pop_task(self, task_id, remove=None):
         """Close a task and return its serialized data."""
@@ -160,12 +125,9 @@ class Progress(progress.Progress):
         except KeyError as e:
             pass
 
-    # convert to multiprocessing proxy
-
     def convert_proxy(self, runtime=None) -> 'ProgressProxy':
         """Convert to a multiprocessing proxy object so methods can be called in another process."""
         runtime = runtime or M._current_runtime()
-        # get current state and cleanup
         started = self.live.is_started
         tasks = self.dump_tasks()
         for task_id in tasks:
@@ -174,24 +136,23 @@ class Progress(progress.Progress):
         self.refresh()
         self.stop()
 
-        # create proxy
-        proxy = runtime.get_manager().mqdm_Progress(
-            *self.columns,
-            _tasks=tasks,
-            _task_index=self._task_index,
-            **self._init_options,
-        )
+        try:
+            proxy = runtime.get_manager().mqdm_Progress(
+                *self.columns,
+                _tasks=tasks,
+                _task_index=self._task_index,
+                **self._init_options,
+            )
+        except Exception:
+            for task_id in sorted(tasks):
+                self.load_task(tasks[task_id], start=False)
+            if started:
+                self.start()
+            raise
         proxy.multiprocess = True
         if started:
             proxy.start()
         return proxy
-    
-    # def get_task_attr(self, task_id, attr, default=None):
-    #     task = self._tasks[task_id]
-    #     try:
-    #         return getattr(task, attr)
-    #     except AttributeError:
-    #         return task.fields.get(attr, default)
 
     def dump_tasks(self):
         with self._lock:
@@ -220,8 +181,6 @@ class Progress(progress.Progress):
     def _start_task(self, task):
         if task.start_time is None:
             task.start_time = self.get_time()
-        # if task.start_time is not None and not task._progress:
-        #     task._progress.append(progress.ProgressSample(task.start_time, task.completed))
 
     def load_task(self, task: dict, start=True):
         with self._lock:
@@ -249,7 +208,6 @@ class Progress(progress.Progress):
             _lock=self._lock,
         )
         start and self._start_task(task)
-        # task._progress.append(progress.ProgressSample(task.start_time or self.get_time(), task.completed))
         self._task_index = progress.TaskID(int(self._task_index) + 1)
         return task
 
@@ -276,11 +234,6 @@ def proxymethod(func):
 
 class ProgressProxy(BaseProxy):
     multiprocess = True
-    # def __init__(self, *args, **kw):
-    #     console = rich.get_console()
-    #     self._redirect_io = _RedirectIO(console)
-    #     self._redirect_io.enable()
-    #     super().__init__(*args, **kw)
 
     start_task = proxymethod(Progress.start_task)
     stop_task = proxymethod(Progress.stop_task)
@@ -292,7 +245,6 @@ class ProgressProxy(BaseProxy):
     start = proxymethod(Progress.start)
     stop = proxymethod(Progress.stop)
     print = proxymethod(Progress.print)
-    # get_task_attr = proxymethod(Progress.get_task_attr)
     dump_task = proxymethod(Progress.dump_task)
     dump_tasks = proxymethod(Progress.dump_tasks)
     load_task = proxymethod(Progress.load_task)
@@ -308,46 +260,3 @@ multiprocessing.managers.ProgressProxy = ProgressProxy  # Can't pickle - attribu
 class MqdmManager(SyncManager):
     mqdm_Progress: Type[ProgressProxy]
 MqdmManager.register('mqdm_Progress', Progress, ProgressProxy)
-
-
-
-# import sys
-# import rich
-# from typing import cast, TextIO, IO, Optional
-# from rich.file_proxy import FileProxy
-# class _RedirectIO:
-#     def __init__(self, console: rich.console.Console, redirect_stdout: bool = True, redirect_stderr: bool = True):
-#         self.console_compatible = console.is_terminal or console.is_jupyter
-#         self._redirect_stdout = redirect_stdout
-#         self._redirect_stderr = redirect_stderr
-#         self._restore_stdout: Optional[IO[str]] = None
-#         self._restore_stderr: Optional[IO[str]] = None
-
-#     def __enter__(self):
-#         self.enable()
-#         return self
-    
-#     def __exit__(self, *exc):
-#         self.disable()
-
-#     def __del__(self):
-#         self.disable()
-
-#     def enable(self) -> None:
-#         """Enable redirecting of stdout / stderr."""
-#         if self.console_compatible:
-#             if self._redirect_stdout and not isinstance(sys.stdout, FileProxy):
-#                 self._restore_stdout = sys.stdout
-#                 sys.stdout = cast("TextIO", FileProxy(self.console, sys.stdout))
-#             if self._redirect_stderr and not isinstance(sys.stderr, FileProxy):
-#                 self._restore_stderr = sys.stderr
-#                 sys.stderr = cast("TextIO", FileProxy(self.console, sys.stderr))
-
-#     def disable(self) -> None:
-#         """Disable redirecting of stdout / stderr."""
-#         if self._restore_stdout:
-#             sys.stdout = cast("TextIO", self._restore_stdout)
-#             self._restore_stdout = None
-#         if self._restore_stderr:
-#             sys.stderr = cast("TextIO", self._restore_stderr)
-#             self._restore_stderr = None

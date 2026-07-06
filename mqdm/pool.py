@@ -54,6 +54,11 @@ class _TaskOutcome:
     @property
     def succeeded(self) -> bool:
         return self.error is None
+    
+
+# ---------------------------------------------------------------------------- #
+#                                 Pool / iPool                                 #
+# ---------------------------------------------------------------------------- #
 
 
 def ipool(
@@ -138,7 +143,15 @@ def pool(
     return results_
 
 
-# ----------------------------------- Init ----------------------------------- #
+
+
+# ---------------------------------------------------------------------------- #
+#                                     Utils                                    #
+# ---------------------------------------------------------------------------- #
+
+
+
+# ----------------------------------- Plan ----------------------------------- #
 
 
 def _make_pool_plan(
@@ -178,12 +191,12 @@ def _make_pool_plan(
     )
 
 
+# ------------------------------- Task Handling ------------------------------ #
+
+
 def _run_inline_single(plan: _PoolPlan):
     arg = utils.args.from_item(next(builtins.iter(plan.iterable)), **plan.fn_kw)
     return arg(plan.fn)
-
-
-# ------------------------------- Task Handling ------------------------------ #
 
 
 def _submit_tasks(executor, plan: _PoolPlan, pbar: mqdm) -> list[_Task]:

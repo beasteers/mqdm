@@ -10,6 +10,8 @@ from rich import progress
 
 import mqdm as M  # self
 from . import utils
+from . import progress_columns
+
 
 _all_runtimes = weakref.WeakSet()
 
@@ -64,9 +66,9 @@ class Runtime:
             "[progress.description]{task.description}",
             progress.BarColumn(bar_width=None),
             "[progress.percentage]{task.percentage:>3.0f}%",
-            utils.MofNColumn(bytes=bytes),
-            utils.SpeedColumn(bytes=bytes),
-            utils.TimeElapsedColumn(compact=True),
+            progress_columns.MofNColumn(bytes=bytes),
+            progress_columns.SpeedColumn(bytes=bytes),
+            progress_columns.TimeElapsedColumn(compact=True),
             progress.TimeRemainingColumn(compact=True),
             progress.SpinnerColumn(),
         )
