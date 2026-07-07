@@ -21,10 +21,7 @@ if str(ROOT) not in sys.path:
 
 import fire
 import mqdm
-from mqdm import progress_columns
 from mqdm.executor import _clear_local, _get_local, _set_local
-from mqdm.proxy import Progress as MQDMProgress
-from rich import progress as rich_progress
 from rich.console import Console, Group
 from rich.pretty import Pretty
 from rich.text import Text
@@ -53,20 +50,6 @@ STATUS_RANK = {
 
 QUEUE_WORKER_KEY = "queue"
 QUEUE_WORKER_LABEL = "queue"
-
-
-def _progress_columns() -> tuple[Any, ...]:
-    return (
-        "[progress.description]{task.description}",
-        rich_progress.BarColumn(bar_width=None),
-        "[progress.percentage]{task.percentage:>3.0f}%",
-        progress_columns.MofNColumn(),
-        progress_columns.SpeedColumn(),
-        progress_columns.TimeElapsedColumn(compact=True),
-        rich_progress.TimeRemainingColumn(compact=True),
-        rich_progress.SpinnerColumn(),
-    )
-
 
 def _preview(value: Any, limit: int = 96) -> str:
     text = repr(value)
@@ -102,23 +85,6 @@ class ControlRoomRuntime(mqdm.Runtime):
         super().__init__()
         self.event_queue = event_queue
 
-    def new_pbar(self, pool_mode: str | None = None, bytes: bool = False, **kw: Any):
-        kw.setdefault("auto_refresh", False)
-        kw.setdefault("redirect_stdout", False)
-        kw.setdefault("redirect_stderr", False)
-        kw.setdefault("expand", True)
-        if pool_mode == "process":
-            return self.get_manager().mqdm_Progress(*_progress_columns(), **kw)
-        return MQDMProgress(*_progress_columns(), **kw)
-
-    def get_pbar(self, pool_mode: str | None = None, start: bool = True, **kw: Any):
-        pbar = self.pbar
-        if pbar is None:
-            pbar = self.pbar = self.new_pbar(pool_mode=pool_mode, **kw)
-        elif pool_mode == "process" and not pbar.multiprocess:
-            pbar = self.pbar = pbar.convert_proxy(runtime=self)
-        return pbar
-
     def emit(self, event_type: str, **data: Any) -> None:
         event = {"type": event_type, "timestamp": time.time(), **data}
         try:
@@ -151,9 +117,7 @@ class WorkerView:
     worker_key: str
     label: str
     current_item_id: int | None = None
-    current_item_label: str = ""
     recent_item_ids: deque[int] = field(default_factory=lambda: deque(maxlen=8))
-    logs: deque[str] = field(default_factory=lambda: deque(maxlen=128))
 
 
 class WorkerDetailTabs(Widget):
@@ -169,11 +133,6 @@ class WorkerDetailTabs(Widget):
         width: 1fr;
     }
     """
-
-    def __init__(self, dom_id: str, worker_label: str) -> None:
-        super().__init__(id=f"worker-detail-{dom_id}")
-        self.dom_id = dom_id
-        self.worker_label = worker_label
 
     def compose(self) -> ComposeResult:
         with TabbedContent():
@@ -216,7 +175,7 @@ def _run_control_room_job(spec: dict[str, Any], *, target: Callable[..., Any], f
         runtime.emit("failed", error_summary=_preview(exc), **context)
         raise
     else:
-        runtime.emit("finished", result_summary=_preview(result), **context)
+        runtime.emit("finished", **context)
         return {"item_id": spec["item_id"], "value": result}
     finally:
         _clear_local("control_room_context")
@@ -246,6 +205,15 @@ def _pool_thread(
             squeeze_=False,
             target=fn,
             fn_kw=fn_kw or {},
+            bar_kw={
+                "start": False,
+                "progress_kw": {
+                    "auto_refresh": False,
+                    "redirect_stdout": False,
+                    "redirect_stderr": False,
+                    "expand": True,
+                },
+            },
         )
         result_queue.put({"type": "pool_results", "results": results})
     except BaseException as exc:
@@ -261,22 +229,6 @@ def _bridge_events(event_queue: Any, result_queue: queue.Queue, stop: threading.
         except Exception:
             if stop.is_set():
                 break
-
-
-def _snapshot_progress_renderable(runtime: ControlRoomRuntime):
-    pbar = runtime.pbar
-    if pbar is None:
-        return None
-    try:
-        if getattr(pbar, "multiprocess", False):
-            mirror = MQDMProgress(*_progress_columns(), auto_refresh=False, expand=True)
-            tasks = pbar.dump_tasks()
-            for task_id in sorted(tasks):
-                mirror.load_task(tasks[task_id], start=False)
-            return mirror.get_renderable()
-        return pbar.get_renderable()
-    except Exception:
-        return None
 
 
 class ControlRoomApp(App[None]):
@@ -320,11 +272,6 @@ class ControlRoomApp(App[None]):
         border: round #8e7a35;
         margin: 0 1 1 1;
         padding: 0 1;
-    }
-
-    #progress-meta {
-        color: #95a6b3;
-        margin: 0 1;
     }
 
     #progress-render {
@@ -400,7 +347,6 @@ class ControlRoomApp(App[None]):
         self.ordered = ordered
         self.refresh_hz = refresh_hz
         self.worker_views: dict[str, WorkerView] = {}
-        self.pool_results: list[dict[str, Any]] | None = None
         self.pool_done = False
         self.errors = 0
         self.queue_row_map: list[int] = []
@@ -447,7 +393,6 @@ class ControlRoomApp(App[None]):
                     yield TabbedContent(id="worker-tabs")
         with Vertical(id="progress-pane"):
             yield Static("Progress", classes="section-title")
-            yield Static("", id="progress-meta")
             yield Static("", id="progress-render")
         yield Footer()
 
@@ -529,6 +474,13 @@ class ControlRoomApp(App[None]):
         elif item.worker_key and item.worker_key in self.worker_views:
             self.active_worker_key = item.worker_key
 
+    def _desired_worker_tab_id(self) -> str | None:
+        if not self.active_worker_key:
+            if any(item.status == "pending" for item in self.work_items.values()):
+                return f"worker-pane-{_worker_dom_id(QUEUE_WORKER_KEY)}"
+            return None
+        return f"worker-pane-{_worker_dom_id(self.active_worker_key)}"
+
     def _detail_item_for_worker(self, worker_key: str) -> WorkItem | None:
         selected = self.work_items.get(self.selected_item_id)
         if worker_key == QUEUE_WORKER_KEY:
@@ -591,6 +543,45 @@ class ControlRoomApp(App[None]):
             Text("Task completed with no return value.", style="#95a6b3"),
         )
 
+    def _logs_for_worker(self, worker_key: str, worker: WorkerView, item: WorkItem | None) -> tuple[str, list[str]]:
+        if worker_key == QUEUE_WORKER_KEY:
+            header = item.label if item is not None else "idle"
+            lines = list(item.logs)[-20:] if item is not None and item.logs else []
+            return header, lines
+        if item is not None:
+            header = item.label
+        elif worker.current_item_id is not None:
+            current_item = self.work_items.get(worker.current_item_id)
+            header = current_item.label if current_item is not None else "idle"
+        else:
+            header = "idle"
+        if item is not None and item.logs:
+            return header, list(item.logs)[-20:]
+        return header, []
+
+    def _refresh_worker_tab(self, worker_key: str, worker: WorkerView) -> None:
+        dom_id = _worker_dom_id(worker_key)
+        try:
+            detail = self.query_one(f"#worker-detail-{dom_id}", WorkerDetailTabs)
+        except NoMatches:
+            self._ensure_worker_tab(worker_key)
+            return
+        log = detail.query_one("#worker-log", Log)
+        input_body = detail.query_one("#worker-input", Static)
+        result_body = detail.query_one("#worker-result", Static)
+        item = self._detail_item_for_worker(worker_key)
+        header, lines = self._logs_for_worker(worker_key, worker, item)
+        log.clear()
+        log.write_line(f"{worker.label} · {header}")
+        log.write_line("")
+        if lines:
+            for line in lines:
+                log.write_line(line)
+        else:
+            log.write_line("No queue logs yet." if worker_key == QUEUE_WORKER_KEY else "No worker logs yet.")
+        input_body.update(self._render_input_detail(item))
+        result_body.update(self._render_result_detail(item))
+
     def _poll_events(self) -> None:
         dirty = False
         while True:
@@ -608,8 +599,7 @@ class ControlRoomApp(App[None]):
     def _apply_event(self, event: dict[str, Any]) -> bool:
         event_type = event["type"]
         if event_type == "pool_results":
-            self.pool_results = event["results"]
-            for result in self.pool_results:
+            for result in event["results"]:
                 item = self.work_items.get(result["item_id"])
                 if item is not None:
                     item.result_value = result["value"]
@@ -639,8 +629,6 @@ class ControlRoomApp(App[None]):
             item.result_value = None
             item.error_summary = None
             worker.current_item_id = item.item_id
-            worker.current_item_label = item.label
-            worker.logs.clear()
             if not self.active_worker_key:
                 self.active_worker_key = worker_key
             return True
@@ -648,7 +636,6 @@ class ControlRoomApp(App[None]):
         if event_type == "log" and item is not None and worker is not None:
             line = event["message"]
             item.logs.append(line)
-            worker.logs.append(line)
             return True
 
         if event_type == "finished" and item is not None and worker is not None:
@@ -656,7 +643,6 @@ class ControlRoomApp(App[None]):
             item.finished_at = event["timestamp"]
             worker.recent_item_ids.append(item.item_id)
             worker.current_item_id = None
-            worker.current_item_label = ""
             return True
 
         if event_type == "failed" and item is not None and worker is not None:
@@ -665,7 +651,6 @@ class ControlRoomApp(App[None]):
             item.error_summary = event.get("error_summary")
             worker.recent_item_ids.append(item.item_id)
             worker.current_item_id = None
-            worker.current_item_label = ""
             self.errors += 1
             return True
 
@@ -682,7 +667,7 @@ class ControlRoomApp(App[None]):
         if any(getattr(pane, "id", None) == pane_id for pane in tabs.query(TabPane)):
             return
         dom_id = _worker_dom_id(worker_key)
-        detail = WorkerDetailTabs(dom_id, worker.label)
+        detail = WorkerDetailTabs(id=f"worker-detail-{dom_id}")
         tab = TabPane(worker.label, detail, id=pane_id)
         tabs.add_pane(tab)
         if self.active_worker_key == worker_key:
@@ -717,75 +702,19 @@ class ControlRoomApp(App[None]):
     def _refresh_worker_tabs(self) -> None:
         real_worker_keys = [worker_key for worker_key in self.worker_views if worker_key != QUEUE_WORKER_KEY]
         for worker_key in real_worker_keys:
-            worker = self.worker_views[worker_key]
-            dom_id = _worker_dom_id(worker_key)
-            try:
-                detail = self.query_one(f"#worker-detail-{dom_id}", WorkerDetailTabs)
-            except NoMatches:
-                self._ensure_worker_tab(worker_key)
-                continue
-            log = detail.query_one("#worker-log", Log)
-            input_body = detail.query_one("#worker-input", Static)
-            result_body = detail.query_one("#worker-result", Static)
-            item = self._detail_item_for_worker(worker_key)
-            log.clear()
-            header = item.label if item is not None else worker.current_item_label or "idle"
-            log.write_line(f"{worker.label} · {header}")
-            log.write_line("")
-            if item is not None and item.logs:
-                for line in list(item.logs)[-20:]:
-                    log.write_line(line)
-            elif worker.logs:
-                for line in list(worker.logs)[-20:]:
-                    log.write_line(line)
-            else:
-                log.write_line("No worker logs yet.")
-            input_body.update(self._render_input_detail(item))
-            result_body.update(self._render_result_detail(item))
+            self._refresh_worker_tab(worker_key, self.worker_views[worker_key])
         self._ensure_queue_worker()
-        queue_key = QUEUE_WORKER_KEY
-        queue_dom_id = _worker_dom_id(queue_key)
-        try:
-            detail = self.query_one(f"#worker-detail-{queue_dom_id}", WorkerDetailTabs)
-        except NoMatches:
-            self._ensure_worker_tab(queue_key)
-        else:
-            log = detail.query_one("#worker-log", Log)
-            input_body = detail.query_one("#worker-input", Static)
-            result_body = detail.query_one("#worker-result", Static)
-            item = self._detail_item_for_worker(queue_key)
-            log.clear()
-            header = item.label if item is not None else "idle"
-            log.write_line(f"{QUEUE_WORKER_LABEL} · {header}")
-            log.write_line("")
-            if item is not None and item.logs:
-                for line in list(item.logs)[-20:]:
-                    log.write_line(line)
-            else:
-                log.write_line("No queue logs yet.")
-            input_body.update(self._render_input_detail(item))
-            result_body.update(self._render_result_detail(item))
+        self._refresh_worker_tab(QUEUE_WORKER_KEY, self.worker_views[QUEUE_WORKER_KEY])
         tabs = self.query_one("#worker-tabs", TabbedContent)
-        if self.active_worker_key:
+        pane_id = self._desired_worker_tab_id()
+        if pane_id is not None:
             try:
-                tabs.active = f"worker-pane-{_worker_dom_id(self.active_worker_key)}"
-            except Exception:
-                pass
-        elif any(item.status == "pending" for item in self.work_items.values()):
-            try:
-                tabs.active = f"worker-pane-{_worker_dom_id(QUEUE_WORKER_KEY)}"
+                tabs.active = pane_id
             except Exception:
                 pass
 
     def _refresh_progress(self) -> None:
-        complete = sum(1 for item in self.work_items.values() if item.status == "complete")
-        running = sum(1 for item in self.work_items.values() if item.status == "running")
-        failed = sum(1 for item in self.work_items.values() if item.status == "failed")
-        self.query_one("#progress-meta", Static).update(
-            f"{complete}/{len(self.work_items)} complete · {running} active · {failed} failed"
-        )
-        renderable = _snapshot_progress_renderable(self.runtime)
-        self.query_one("#progress-render", Static).update(renderable or "")
+        self.query_one("#progress-render", Static).update(self.runtime.pbar or "")
 
 
 def run_control_room(

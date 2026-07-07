@@ -116,11 +116,11 @@ class Runtime:
                 ),
             )
 
-    def new_pbar(self, pool_mode: T_POOL_MODE = None, bytes: bool = False, **kw: Any) -> ProgressLike:
+    def new_pbar(self, pool_mode: T_POOL_MODE = None, bytes: bool = False, columns: tuple[Any, ...] | None = None, **kw: Any) -> ProgressLike:
         from . import proxy
 
         kw.setdefault('refresh_per_second', 8)
-        columns = (
+        columns = columns or (
             "[progress.description]{task.description}",
             progress.BarColumn(bar_width=None),
             "[progress.percentage]{task.percentage:>3.0f}%",

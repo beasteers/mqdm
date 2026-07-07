@@ -156,6 +156,13 @@ class Progress(progress.Progress):
         with self._lock:
             return {task_id: self._dump_task(self._tasks[task_id]).to_dict() for task_id in self._tasks}
 
+    def dump_render_state(self):
+        return {
+            'columns': self.columns,
+            'tasks': self.dump_tasks(),
+            'init_options': self._init_options,
+        }
+
     def dump_task(self, task_id):
         with self._lock:
             return self._dump_task(self._tasks[task_id]).to_dict()
@@ -253,10 +260,24 @@ class ProgressProxy(BaseProxy):
     print = proxymethod(Progress.print)
     dump_task = proxymethod(Progress.dump_task)
     dump_tasks = proxymethod(Progress.dump_tasks)
+    dump_render_state = proxymethod(Progress.dump_render_state)
     load_task = proxymethod(Progress.load_task)
     new_task = proxymethod(Progress.new_task)
     pop_task = proxymethod(Progress.pop_task)
     clear = proxymethod(Progress.clear)
+
+    def _render_progress(self):
+        state = self.dump_render_state()
+        init_options = dict(state['init_options'])
+        init_options['auto_refresh'] = False
+        init_options.setdefault('expand', True)
+        mirror = Progress(*state['columns'], **init_options)
+        for task_id in sorted(state['tasks']):
+            mirror.load_task(state['tasks'][task_id], start=False)
+        return mirror
+
+    def __rich_console__(self, console, options):
+        yield from self._render_progress().__rich_console__(console, options)
 
 ProgressProxy._exposed_ = tuple(k for k, v in ProgressProxy.__dict__.items() if getattr(v, '_is_exposed_', False))
 
