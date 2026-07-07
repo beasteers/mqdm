@@ -533,17 +533,24 @@ class mqdm(Generic[T]):
 
     def set(self, **kw: Any) -> mqdm[T]:
         """Update progress bar fields."""
+        reset_fast_advance = callable(kw.get('description'))
         kw = self._process_args(**kw)
         if self.disable: return self
 
         if not kw:
+            if reset_fast_advance and self.fast_advance is not None:
+                self._reset_fast_advance()
             return self
 
         pbar = self.runtime.pbar
         if pbar is not None:
             pbar.update_(self.task_id, **kw)
+            if reset_fast_advance and self.fast_advance is not None:
+                self._reset_fast_advance()
             return self
         if self._task_dict is not None:
             self._set_task_dict(kw)
+            if reset_fast_advance and self.fast_advance is not None:
+                self._reset_fast_advance()
             return self
         raise RuntimeError("Cannot update mqdm bar without an attached progress bar or detached task state.")

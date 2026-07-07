@@ -130,3 +130,40 @@ def test_bar_detached_updates_restore_on_reopen():
         assert restored["fields"]["transient"] is True
     finally:
         bar.close()
+
+
+def test_bar_detached_fast_advance_updates_snapshot_description():
+    runtime = M.Runtime()
+    bar = M.mqdm(total=5, runtime=runtime)
+
+    try:
+        bar.set(description=lambda x, i: f"{x}:{i}")
+        bar.close()
+
+        bar.fast_advance("alpha", n=2, flush=True, wait=False)
+
+        assert bar._task_dict["completed"] == 2
+        assert bar._task_dict["description"] == "alpha:1"
+
+        bar.open()
+
+        restored = runtime.pbar.dump_task(bar.task_id)
+        assert restored["completed"] == 2
+        assert restored["description"] == "alpha:1"
+    finally:
+        bar.close()
+
+
+def test_bar_live_fast_advance_updates_description():
+    runtime = M.Runtime()
+    bar = M.mqdm(total=5, runtime=runtime)
+
+    try:
+        bar.set(description=lambda x, i: f"{x}:{i}")
+        bar.fast_advance("alpha", n=2, flush=True, wait=False)
+
+        restored = runtime.pbar.dump_task(bar.task_id)
+        assert restored["completed"] == 2
+        assert restored["description"] == "alpha:1"
+    finally:
+        bar.close()

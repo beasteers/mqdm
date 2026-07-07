@@ -1,6 +1,10 @@
 import time
+import logging
+
 import mqdm as M
 from mqdm import mqdm, pool, print
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------- #
@@ -83,11 +87,12 @@ def example_pool(n=5, transient=False, n_workers=5, **kw):
 
 def example_cf_pool(n=5, transient=False, n_workers=5, **kw):
     from concurrent.futures import ProcessPoolExecutor, as_completed
+    from mqdm.executor import Initializer
     import time
     t0 = time.time()
 
     it = range(n)
-    with ProcessPoolExecutor(max_workers=n_workers, initializer=M.Initializer("process")) as executor, \
+    with ProcessPoolExecutor(max_workers=n_workers, initializer=Initializer(pool_mode='process')) as executor, \
          mqdm(desc='[bold blue]Very important work', total=len(it), transient=transient) as pbar:
         futures = {executor.submit(example_fn, i, **kw): i for i in it}
         for future in as_completed(futures):
@@ -97,11 +102,12 @@ def example_cf_pool(n=5, transient=False, n_workers=5, **kw):
 
 def example_mp_pool(n=5, transient=False, n_workers=5, **kw):
     from multiprocessing import Pool
+    from .executor import Initializer
     import time
     t0 = time.time()
 
     it = range(n)
-    with Pool(processes=n_workers, initializer=M.Initializer("process")) as executor, \
+    with Pool(processes=n_workers, initializer=Initializer(pool_mode='process')) as executor, \
          mqdm(desc='[bold blue]Very important work', total=len(it), transient=transient) as pbar:
         for _ in executor.imap_unordered(example_fn, it):
             pbar.update(1)
@@ -140,14 +146,6 @@ def example_thread_pool(n=5, transient=False, n_workers=5, **kw):
             t.join()
     print("done in", time.time() - t0, "seconds", 123)
 
-
-import logging
-from mqdm import install_logging
-
-install_logging(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-
 def log_fn(n, sleep=1):
     import random
     for i in mqdm(range(n + 1), desc=f'example {n}'):
@@ -157,6 +155,7 @@ def log_fn(n, sleep=1):
     logger.info(f"Done {n}")
 
 def example_logging(n=5, transient=False, n_workers=5, **kw):
+    M.install_logging(level=logging.INFO)
     pool(
         log_fn,
         range(n), 
