@@ -115,7 +115,13 @@ def ipool(
 
     remote_exceptions: RemoteExceptionMap = {}
     try:
-        with mqdm(desc=plan.desc, elapsed_speed=True, runtime=plan.runtime, **plan.bar_kw) as pbar:
+        with mqdm(
+            desc=plan.desc,
+            total=plan.total if plan.total >= 0 else None,
+            elapsed_speed=True,
+            runtime=plan.runtime,
+            **plan.bar_kw,
+        ) as pbar:
             executor = M.executor(plan.pool_mode, bar_kw=plan.worker_bar_kw, max_workers=plan.n_workers, runtime=plan.runtime)
             shutdown_wait = True
             shutdown_cancel_futures = False
@@ -289,7 +295,8 @@ def _submit_next(executor: Executor, plan: _PoolPlan, pbar: mqdm, indexed_iter: 
     call_arg = utils.args.from_item(item)
     call_arg.kw = {**plan.fn_kw, **call_arg.kw}
     future = executor.submit(plan.fn, *call_arg.a, **call_arg.kw)
-    pbar.set(append_total=1)
+    if plan.total < 0:
+        pbar.set(append_total=1)
     return _Task(index=index, display_arg=display_arg, future=future)
 
 

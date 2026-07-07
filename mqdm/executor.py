@@ -106,6 +106,19 @@ def _get_local(key, default=None):
     return getattr(_thread_local_data, key, default)
 
 
+def _set_local(**values):
+    """Set one or more thread-local variables."""
+    for key, value in values.items():
+        setattr(_thread_local_data, key, value)
+
+
+def _clear_local(*keys):
+    """Remove thread-local variables if present."""
+    for key in keys:
+        if hasattr(_thread_local_data, key):
+            delattr(_thread_local_data, key)
+
+
 class Initializer:
     def __init__(self, fn: Callable=None, *a, pool_mode: T_POOL_MODE='process', defaults: dict=None, runtime=None, **kw):
         self.fn = M.fn(fn, *a, **kw) if fn is not None else None
@@ -115,8 +128,7 @@ class Initializer:
 
     def __call__(self):
         """Initialize the progress bar for the worker thread/process."""
-        _thread_local_data.runtime = self.runtime
-        _thread_local_data.defaults = self.defaults
+        _set_local(runtime=self.runtime, defaults=self.defaults)
         self.runtime.install_pool_worker()
         if self.fn is not None:
             self.fn()

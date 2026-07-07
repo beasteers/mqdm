@@ -21,6 +21,13 @@ setuptools.setup(
             'ipython',
             'pyinstrument',
             'pdbr'
+        ],
+        'docs': [
+            'mkdocs',
+            'mkdocs-material',
+            'mkdocstrings[python]',
+            'pymdown-extensions',
+            'ruff',
         ]
     },
     classifiers=[

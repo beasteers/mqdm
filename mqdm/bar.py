@@ -11,6 +11,7 @@ from .executor import _get_local
 import mqdm as M
 
 if TYPE_CHECKING:
+    from .executor import T_POOL_MODE
     from .runtime import ProgressLike
 
 
@@ -82,7 +83,7 @@ class mqdm(Generic[T]):
             it: Iterable[T] | int | str | None=None, desc: str | DescFunc[T] | None=None, *, 
 
             # mqdm arguments
-            pool_mode=None,
+            pool_mode: T_POOL_MODE=None,
             disable: bool | None=None,
             runtime: Runtime | None=None,
             task_id: TaskId | TaskState | None=None,
@@ -295,7 +296,7 @@ class mqdm(Generic[T]):
             if sys.meta_path is None:
                 return 
             self.close()
-        except (ImportError, BrokenPipeError, FileNotFoundError) as e:
+        except Exception:
             pass
 
     # ----------------------------- Iteration methods ---------------------------- #
@@ -361,18 +362,10 @@ class mqdm(Generic[T]):
     def _get_iter(self, it: Iterable[T]) -> Iterator[T]:
         with utils.noopcontext() if self.entered else self:
             update = self._reset_fast_advance()
-            it = iter(it)
-            try:
-                x = next(it)
-                update(x, 1, flush=True)
-                yield x
-            except StopIteration:
-                update(..., 0, flush=True)
-                return 
-
+            x: T | object = ...
             for x in it:
-                update(x, 1)
                 yield x
+                update(x, 1)
             update(x, 0, flush=True)
 
     def __call__(

@@ -167,3 +167,14 @@ def test_bar_live_fast_advance_updates_description():
         assert restored["description"] == "alpha:1"
     finally:
         bar.close()
+
+
+def test_bar_del_swallows_late_close_errors():
+    bar = M.mqdm(disable=True)
+
+    def fail_close(remove=None):
+        raise KeyError(1)
+
+    bar.close = fail_close
+
+    bar.__del__()
