@@ -1,0 +1,55 @@
+site_name: mqdm
+site_description: quiet progress bars for threads, processes, and nested work
+theme:
+  name: material
+  palette:
+    primary: "blue grey"
+    accent: teal
+  font:
+    text: IBM Plex Sans
+    code: IBM Plex Mono
+  features:
+    - navigation.tabs
+    - navigation.top
+    - content.code.copy
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path:
+        - docs
+  - pymdownx.tabbed:
+      alternate_style: true
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_root_full_path: false
+            show_signature_annotations: true
+            separate_signature: true
+            merge_init_into_class: true
+nav:
+  - Home: index.md
+  - Examples:
+      - Overview: examples/index.md
+      - Loops: examples/loops.md
+      - Pools: examples/pools.md
+      - Output: examples/output.md
+      - Patterns: examples/patterns.md
+  - API Reference: api.md
+extra_css:
+  - https://cdn.jsdelivr.net/npm/asciinema-player@3.8.0/dist/bundle/asciinema-player.css
+  - stylesheets/extra.css
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/asciinema-player@3.8.0/dist/bundle/asciinema-player.min.js
+  - javascripts/casts.js
