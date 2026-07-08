@@ -46,15 +46,6 @@ class mqdm(Generic[T]):
         disable: Whether rendering should be disabled while counters continue to
             update.
         task_id: Existing task identifier or detached task state to restore.
-        progress_kw: Extra keyword arguments for the underlying Rich progress
-            instance.
-        auto_refresh: Whether the underlying progress should refresh
-            automatically.
-        refresh_per_second: Maximum refresh rate for the progress display.
-        speed_estimate_period: Window used for speed estimation.
-        redirect_stdout: Whether Rich should redirect standard output.
-        redirect_stderr: Whether Rich should redirect standard error.
-        expand: Whether the underlying Rich progress should expand horizontally.
         init_kw: Extra keyword arguments for the initial task creation.
         start: Whether the task should start immediately.
         total: Optional total item count.
@@ -88,15 +79,6 @@ class mqdm(Generic[T]):
             runtime: Runtime | None=None,
             task_id: TaskId | TaskState | None=None,
 
-            # progress bar arguments
-            progress_kw: dict[str, Any] | None=None,
-            auto_refresh: bool = True,
-            refresh_per_second: float = 8,
-            speed_estimate_period: float = 60.0,
-            redirect_stdout: bool = True,
-            redirect_stderr: bool = True,
-            expand: bool = False,
-
             # rich task arguments
             init_kw: dict[str, Any] | None=None,
             completed: int = 0,
@@ -115,13 +97,6 @@ class mqdm(Generic[T]):
         self._init_runtime(
             runtime=runtime,
             disable=disable,
-            progress_kw=progress_kw,
-            auto_refresh=auto_refresh,
-            refresh_per_second=refresh_per_second,
-            speed_estimate_period=speed_estimate_period,
-            redirect_stdout=redirect_stdout,
-            redirect_stderr=redirect_stderr,
-            expand=expand,
         )
 
         start, bind_kw = self._init_task(
@@ -144,25 +119,9 @@ class mqdm(Generic[T]):
     def _init_runtime(
             self, *,
             runtime: Runtime | None,
-            disable: bool | None,
-            progress_kw: dict[str, Any] | None,
-            auto_refresh: bool,
-            refresh_per_second: float,
-            speed_estimate_period: float,
-            redirect_stdout: bool,
-            redirect_stderr: bool,
-            expand: bool) -> None:
+            disable: bool | None) -> None:
         self.runtime = runtime or _get_local('runtime', M._current_runtime())
         self.disable = self.disable if disable is None else disable
-        self._progress_kw: dict[str, Any] = {
-            **(progress_kw or {}),
-            "auto_refresh": auto_refresh,
-            "refresh_per_second": refresh_per_second,
-            "speed_estimate_period": speed_estimate_period,
-            "redirect_stdout": redirect_stdout,
-            "redirect_stderr": redirect_stderr,
-            "expand": expand,
-        }
 
     def _init_task(
             self, *,
@@ -203,7 +162,8 @@ class mqdm(Generic[T]):
                 self.task_id = task_id
             return start, bind_kw
 
-        pbar = self.runtime.get_pbar(pool_mode=pool_mode, **self._progress_kw)
+        pbar = self.runtime.get_pbar(pool_mode=pool_mode)
+        pbar.start()
         self.runtime.add_instance(self)
 
         if task_id is None:
@@ -305,7 +265,7 @@ class mqdm(Generic[T]):
         D: dict[str, Any] = self.__dict__
         disable = self.disable
         ttl_pause_wait = utils.fn_throttle(self.runtime.pause_event.wait, self.runtime.pause_wait_ttl_seconds)
-        delta = 1 / (self._progress_kw['refresh_per_second'] or 8)
+        delta = 1 / (self.runtime.progress_options.get('refresh_per_second') or 8)
         runtime = self.runtime
         task_id = self.task_id
         get_desc = self.get_desc
@@ -398,7 +358,7 @@ class mqdm(Generic[T]):
         """Attach local state to a live runtime progress task."""
         if self.disable: return
 
-        pbar = self.runtime.get_pbar(start=False, **self._progress_kw)
+        pbar = self.runtime.get_pbar()
         self.runtime.add_instance(self)
         if self._task_dict is not None:
             pbar.load_task(self._task_dict)

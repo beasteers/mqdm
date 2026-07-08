@@ -1,4 +1,5 @@
 import mqdm as M
+from mqdm._logging import MQDMHandler
 
 
 def test_pause_context_manager_sets_event_after_exit():
@@ -44,3 +45,17 @@ def test_runtime_atexit_clears_private_state():
     assert runtime.pbar is None
     assert not runtime.instances
     assert runtime.manager is None
+
+
+def test_runtime_atexit_uninstalls_logging():
+    runtime = M.Runtime()
+    runtime.install_logging(capture_warnings=True)
+
+    assert any(isinstance(h, MQDMHandler) and h.runtime is runtime for h in __import__("logging").getLogger().handlers)
+    assert runtime.capture_warnings is True
+
+    runtime.atexit()
+
+    assert not any(isinstance(h, MQDMHandler) and h.runtime is runtime for h in __import__("logging").getLogger().handlers)
+    assert runtime.capture_warnings is False
+    assert runtime.logging_config is None

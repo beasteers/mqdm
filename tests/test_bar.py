@@ -67,8 +67,8 @@ def test_bar_open_close_tracks_runtime_instances():
 
 
 def test_bar_close_flushes_buffered_fast_advance():
-    runtime = M.Runtime()
-    bar = M.mqdm(total=5, runtime=runtime, refresh_per_second=0.1)
+    runtime = M.Runtime(refresh_per_second=0.1)
+    bar = M.mqdm(total=5, runtime=runtime)
 
     try:
         bar.fast_advance(n=1, flush=True)
@@ -89,8 +89,8 @@ def test_bar_close_flushes_buffered_fast_advance():
 
 
 def test_bar_close_flush_does_not_wait_on_pause():
-    runtime = M.Runtime()
-    bar = M.mqdm(total=5, runtime=runtime, refresh_per_second=0.1)
+    runtime = M.Runtime(refresh_per_second=0.1)
+    bar = M.mqdm(total=5, runtime=runtime)
 
     try:
         bar.fast_advance(n=2)

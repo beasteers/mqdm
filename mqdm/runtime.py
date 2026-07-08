@@ -52,7 +52,18 @@ class Runtime:
     isolated progress or logging behavior.
     """
 
-    def __init__(self, on_event: Callable[[dict], Any] | None = None) -> None:
+    def __init__(
+        self,
+        on_event: Callable[[dict], Any] | None = None,
+        *,
+        progress_kw: dict[str, Any] | None = None,
+        auto_refresh: bool = True,
+        refresh_per_second: float = 8,
+        speed_estimate_period: float = 60.0,
+        redirect_stdout: bool = True,
+        redirect_stderr: bool = True,
+        expand: bool = False,
+    ) -> None:
         self.pbar: ProgressLike | None = None
         self.manager: MqdmManager | None = None
         # When set, emitted events are handed to this sink (a dict) instead of
@@ -72,7 +83,53 @@ class Runtime:
         self.logging_config: LoggingConfig | None = None
         self.next_pause_check_time: float = 0
         self.pause_wait_ttl_seconds: float = 0.5
+        self._progress_kw: dict[str, Any] = {
+            **(progress_kw or {}),
+            "auto_refresh": auto_refresh,
+            "refresh_per_second": refresh_per_second,
+            "speed_estimate_period": speed_estimate_period,
+            "redirect_stdout": redirect_stdout,
+            "redirect_stderr": redirect_stderr,
+            "expand": expand,
+        }
         _all_runtimes.add(self)
+
+    @property
+    def progress_options(self) -> dict[str, Any]:
+        """Runtime-scoped options used when creating the shared Progress."""
+        return dict(self._progress_kw)
+
+    def configure(
+        self,
+        *,
+        progress_kw: dict[str, Any] | None = None,
+        auto_refresh: bool | None = None,
+        refresh_per_second: float | None = None,
+        speed_estimate_period: float | None = None,
+        redirect_stdout: bool | None = None,
+        redirect_stderr: bool | None = None,
+        expand: bool | None = None,
+    ) -> Runtime:
+        """Configure runtime-scoped Progress options before the first bar."""
+        updates = {
+            key: value for key, value in {
+                "auto_refresh": auto_refresh,
+                "refresh_per_second": refresh_per_second,
+                "speed_estimate_period": speed_estimate_period,
+                "redirect_stdout": redirect_stdout,
+                "redirect_stderr": redirect_stderr,
+                "expand": expand,
+            }.items()
+            if value is not None
+        }
+        if progress_kw:
+            updates = {**progress_kw, **updates}
+        if not updates:
+            return self
+        if self.pbar is not None:
+            raise RuntimeError("Cannot configure runtime progress options after the shared progress bar has been created.")
+        self._progress_kw.update(updates)
+        return self
 
     def __getstate__(self) -> dict[str, Any]:
         state: dict[str, Any] = self.__dict__.copy()
@@ -103,7 +160,8 @@ class Runtime:
         _all_runtimes.add(self)
 
     def prepare_pool_worker(self, pool_mode: T_POOL_MODE = None) -> None:
-        self.get_pbar(pool_mode=pool_mode, start=True)
+        pbar = self.get_pbar(pool_mode=pool_mode)
+        pbar.start()
         self.pause_event.set()
         self.shutdown_event.set()
 
@@ -141,10 +199,10 @@ class Runtime:
             return self.get_manager().mqdm_Progress(*columns, **kw)
         return proxy.Progress(*columns, **kw)
 
-    def get_pbar(self, pool_mode: T_POOL_MODE = None, start: bool = True, **kw: Any) -> ProgressLike:
+    def get_pbar(self, pool_mode: T_POOL_MODE = None, start: bool = False, **kw: Any) -> ProgressLike:
         pbar = self.pbar
         if pbar is None:
-            pbar = self.pbar = self.new_pbar(pool_mode=pool_mode, **kw)
+            pbar = self.pbar = self.new_pbar(pool_mode=pool_mode, **{**self._progress_kw, **kw})
         elif pool_mode == 'process' and not pbar.multiprocess:
             pbar = self.pbar = pbar.convert_proxy(runtime=self)
         if start:
@@ -381,6 +439,7 @@ class Runtime:
             self.manager = None
 
     def atexit(self) -> None:
+        self.uninstall_logging()
         self.close_instances()
         self.shutdown_manager()
 
@@ -395,6 +454,11 @@ def _current_runtime() -> Runtime:
         return _get_local('runtime', _runtime)
     except Exception:
         return _runtime
+
+
+def configure(**kw: Any) -> Runtime:
+    """Configure the implicit global runtime before its first progress bar."""
+    return _runtime.configure(**kw)
 
 
 class _pause_exit:

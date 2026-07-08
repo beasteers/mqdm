@@ -56,8 +56,8 @@ def test_fopen_flushes_final_buffer_with_external_bar(tmp_path):
     p = tmp_path / 'data.txt'
     p.write_text('abc\n')
 
-    runtime = mqdm.Runtime()
-    bar = mqdm.mqdm(total=0, runtime=runtime, init_kw={'bytes': True}, refresh_per_second=0.1)
+    runtime = mqdm.Runtime(refresh_per_second=0.1)
+    bar = mqdm.mqdm(total=0, runtime=runtime, init_kw={'bytes': True})
 
     try:
         bar.open()
@@ -75,8 +75,8 @@ def test_fopen_text_mode_tracks_utf8_bytes(tmp_path):
     p = tmp_path / 'data.txt'
     p.write_text('a\né\n', encoding='utf-8')
 
-    runtime = mqdm.Runtime()
-    bar = mqdm.mqdm(total=0, runtime=runtime, init_kw={'bytes': True}, refresh_per_second=0.1)
+    runtime = mqdm.Runtime(refresh_per_second=0.1)
+    bar = mqdm.mqdm(total=0, runtime=runtime, init_kw={'bytes': True})
 
     try:
         bar.open()

@@ -2,7 +2,7 @@ from contextlib import contextmanager
 
 import mqdm as M  # self
 
-from .runtime import Runtime, _current_runtime, _runtime
+from .runtime import Runtime, _current_runtime, _runtime, configure
 
 
 @contextmanager
@@ -90,4 +90,5 @@ __all__ = [
     'mqdm',
     'pool',
     'ipool',
+    'configure',
 ]
