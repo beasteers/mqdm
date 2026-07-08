@@ -295,10 +295,34 @@ def _submit_next(executor: Executor, plan: _PoolPlan, pbar: mqdm, indexed_iter: 
     display_arg = utils.args.from_item(item)
     call_arg = utils.args.from_item(item)
     call_arg.kw = {**plan.fn_kw, **call_arg.kw}
-    future = executor.submit(plan.fn, *call_arg.a, **call_arg.kw)
+    future = executor.submit(_task_call, index, plan.fn, call_arg.a, call_arg.kw)
     if plan.total < 0:
         pbar.set(append_total=1)
     return _Task(index=index, display_arg=display_arg, future=future)
+
+
+def _task_call(index, fn, args, kw):
+    """Run a task in the worker, tagging events with ``task_index`` and emitting
+    lifecycle events when a sink is attached.
+
+    Only the cheap ``task_index`` rides the context — the arg/result stay on the
+    main process (which submitted them) and are correlated there, so large inputs
+    are never re-serialized per event.
+    """
+    runtime = M._current_runtime()
+    emit = runtime.on_event is not None
+    with runtime.context(task_index=index):
+        if emit:
+            runtime.emit("task_started")
+        try:
+            result = fn(*args, **kw)
+        except BaseException as e:
+            if emit:
+                runtime.emit("task_failed", error=repr(e))
+            raise
+        if emit:
+            runtime.emit("task_finished")
+        return result
 
 
 def _task_outcome(task: _Task) -> _TaskOutcome:

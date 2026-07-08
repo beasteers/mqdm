@@ -1,4 +1,7 @@
+import os
 import sys
+import threading
+import multiprocessing as mp
 from typing import Callable, Literal
 from concurrent.futures._base import FINISHED, RUNNING
 from concurrent.futures import Future, Executor, ThreadPoolExecutor, ProcessPoolExecutor as _StdlibProcessPoolExecutor
@@ -119,10 +122,27 @@ def _clear_local(*keys):
             delattr(_thread_local_data, key)
 
 
+def _worker_identity(pool_mode: T_POOL_MODE) -> dict:
+    """Mode-correct worker identity for event context.
+
+    ``worker`` is a value guaranteed unique per concurrent worker in this mode
+    (so consumers can key/group on it without knowing the pool mode); the raw
+    ``pid``/``process_name``/``thread_name`` fields are exposed for display.
+    """
+    if pool_mode == 'thread':
+        thread = threading.current_thread()
+        return {'worker': thread.ident, 'pid': os.getpid(),
+                'process_name': mp.current_process().name, 'thread_name': thread.name}
+    if pool_mode == 'process':
+        return {'worker': os.getpid(), 'pid': os.getpid(), 'process_name': mp.current_process().name}
+    return {'worker': 'main', 'pid': os.getpid(), 'process_name': mp.current_process().name}
+
+
 class Initializer:
     def __init__(self, fn: Callable=None, *a, pool_mode: T_POOL_MODE='process', defaults: dict=None, runtime=None, **kw):
         self.fn = M.fn(fn, *a, **kw) if fn is not None else None
         self.defaults = defaults if defaults is not None else {}
+        self.pool_mode = pool_mode
         self.runtime = runtime or M._current_runtime()
         self.runtime.prepare_pool_worker(pool_mode=pool_mode)
 
@@ -130,5 +150,6 @@ class Initializer:
         """Initialize the progress bar for the worker thread/process."""
         _set_local(runtime=self.runtime, defaults=self.defaults)
         self.runtime.install_pool_worker()
+        self.runtime.set_base_context(**_worker_identity(self.pool_mode))
         if self.fn is not None:
             self.fn()

@@ -61,13 +61,8 @@ def _preview(value: Any, limit: int = 96) -> str:
     return text if len(text) <= limit else text[: limit - 3] + "..."
 
 
-def _worker_key() -> str:
-    process = mp.current_process()
-    return f"{process.name}:{os.getpid()}"
-
-
-def _worker_dom_id(worker_key: str) -> str:
-    return "".join(ch if ch.isalnum() else "-" for ch in worker_key)
+def _worker_dom_id(worker_key: Any) -> str:
+    return "".join(ch if ch.isalnum() else "-" for ch in str(worker_key))
 
 
 def _pane_id(worker_key: str) -> str:
@@ -78,35 +73,10 @@ def _detail_id(worker_key: str) -> str:
     return f"worker-detail-{_worker_dom_id(worker_key)}"
 
 
-def _worker_badge(worker_label: str | None) -> str:
-    if not worker_label:
-        return ""
-    parts = worker_label.split()
-    if parts and parts[-1].isdigit():
-        return parts[-1]
-    return worker_label
-
-
 def _render_print_message(*args: Any, **kw: Any) -> str:
     console = Console(file=io.StringIO(), force_terminal=False, color_system=None, width=120)
     console.print(*args, **kw)
     return console.file.getvalue().rstrip()
-
-
-class ControlRoomRuntime(mqdm.Runtime):
-    def __init__(self, event_queue: Any) -> None:
-        super().__init__()
-        self.event_queue = event_queue
-
-    def handle_event(self, event_type: str, **data: Any) -> None:
-        context = dict(data.pop("context", None) or self.get_context())
-        if event_type == "print" and "message" not in data:
-            data["message"] = _render_print_message(*data.pop("args", ()), **data.pop("kw", {}))
-        event = {"type": event_type, "timestamp": time.time(), **context, **data}
-        try:
-            self.event_queue.put(event)
-        except Exception:
-            pass
 
 
 @dataclass
@@ -125,8 +95,125 @@ class WorkItem:
 class WorkerView:
     worker_key: str
     label: str
+    index: int = 0
     current_item_id: int | None = None
     recent_item_ids: deque[int] = field(default_factory=lambda: deque(maxlen=8))
+
+
+class ControlRoomModel:
+    """UI-agnostic control-room state: the work-item / worker model plus the
+    event reducer. Holds no Textual references, so it can be driven and inspected
+    independently of the app."""
+
+    def __init__(self, specs: list[dict[str, Any]]) -> None:
+        self.work_items: dict[int, WorkItem] = {
+            spec["item_id"]: WorkItem(item_id=spec["item_id"], label=spec["label"], job_repr=spec["job_repr"])
+            for spec in specs
+        }
+        self.worker_views: dict[str, WorkerView] = {}
+        self.pool_done: bool = False
+        self.pool_traceback: str | None = None
+
+    def ordered_items(self) -> list[WorkItem]:
+        return sorted(self.work_items.values(), key=lambda item: (STATUS_RANK[item.status], item.item_id))
+
+    def ensure_queue_worker(self) -> None:
+        if QUEUE_WORKER_KEY not in self.worker_views:
+            self.worker_views[QUEUE_WORKER_KEY] = WorkerView(worker_key=QUEUE_WORKER_KEY, label=QUEUE_WORKER_KEY)
+
+    def real_worker_keys(self) -> list[str]:
+        return [key for key in self.worker_views if key != QUEUE_WORKER_KEY]
+
+    def _ensure_worker(self, worker_key: str) -> WorkerView:
+        worker = self.worker_views.get(worker_key)
+        if worker is None:
+            index = len(self.real_worker_keys()) + 1
+            worker = self.worker_views[worker_key] = WorkerView(worker_key=worker_key, label=f"worker {index}", index=index)
+        return worker
+
+    def apply_event(self, event: dict[str, Any]) -> bool:
+        """Fold one event into the model. Returns whether anything changed."""
+        event_type = event["type"]
+        if event_type == "pool_results":
+            # results are ordered by task index (see _pool_thread)
+            for index, value in enumerate(event["results"]):
+                item = self.work_items.get(index)
+                if item is not None:
+                    item.result_value = value
+            self.pool_done = True
+            return True
+        if event_type == "pool_error":
+            self.pool_done = True
+            self.pool_traceback = event.get("traceback")
+            return True
+
+        # mqdm stamps every event with a context carrying worker identity and the
+        # task index (see Runtime.set_base_context / the pool's _task_call).
+        context = event.get("context", {})
+        item = self.work_items.get(context.get("task_index"))
+        worker_key = context.get("worker")
+        worker = self._ensure_worker(worker_key) if worker_key is not None else None
+        if item is None or worker is None:
+            return False
+
+        if event_type == "task_started":
+            item.status = "running"
+            item.worker_key = worker_key
+            item.result_value = None
+            item.error_summary = None
+            worker.current_item_id = item.item_id
+            return True
+        if event_type in ("log", "print"):
+            item.logs.append(self._event_message(event))
+            return True
+        if event_type == "task_finished":
+            item.status = "complete"
+            worker.recent_item_ids.append(item.item_id)
+            worker.current_item_id = None
+            return True
+        if event_type == "task_failed":
+            item.status = "failed"
+            item.error_summary = _preview(event.get("error", ""))
+            worker.recent_item_ids.append(item.item_id)
+            worker.current_item_id = None
+            return True
+        return False
+
+    @staticmethod
+    def _event_message(event: dict[str, Any]) -> str:
+        # log events arrive pre-rendered; print events carry raw args/kw (rendered
+        # here, on the consumer side, so nothing extra rides the event stream).
+        if "message" in event:
+            return event["message"]
+        return _render_print_message(*event.get("args", ()), **event.get("kw", {}))
+
+    def detail_item_for_worker(self, worker_key: str, selected_item_id: int) -> WorkItem | None:
+        selected = self.work_items.get(selected_item_id)
+        if worker_key == QUEUE_WORKER_KEY:
+            if selected is not None and selected.status == "pending":
+                return selected
+            return next((item for item in self.ordered_items() if item.status == "pending"), None)
+        if selected is not None and selected.worker_key == worker_key:
+            return selected
+        worker = self.worker_views.get(worker_key)
+        if worker is None:
+            return None
+        if worker.current_item_id is not None:
+            return self.work_items.get(worker.current_item_id)
+        if worker.recent_item_ids:
+            return self.work_items.get(worker.recent_item_ids[-1])
+        return None
+
+    def logs_for_worker(self, worker_key: str, worker: WorkerView, item: WorkItem | None) -> tuple[str, list[str]]:
+        if worker_key == QUEUE_WORKER_KEY or item is not None:
+            header = item.label if item is not None else "idle"
+        elif worker.current_item_id is not None:
+            current_item = self.work_items.get(worker.current_item_id)
+            header = current_item.label if current_item is not None else "idle"
+        else:
+            header = "idle"
+        lines = list(item.logs)[-LOG_TAIL:] if item is not None and item.logs else []
+        return header, lines
 
 
 class WorkerDetailTabs(Widget):
@@ -167,50 +254,30 @@ def _make_job_specs(
     return specs
 
 
-def _run_control_room_job(spec: dict[str, Any], *, target: Callable[..., Any], fn_kw: dict[str, Any] | None = None) -> Any:
-    runtime = mqdm._current_runtime()
-    worker_key = _worker_key()
-    with runtime.context(
-        item_id=spec["item_id"],
-        item_label=spec["label"],
-        worker_key=worker_key,
-    ):
-        runtime.emit("started")
-        try:
-            call_arg = mqdm.args.from_item(spec["item"])
-            result = target(*call_arg.a, **{**(fn_kw or {}), **call_arg.kw})
-        except BaseException as exc:
-            runtime.emit("failed", error_summary=_preview(exc))
-            raise
-        else:
-            runtime.emit("finished")
-            return {"item_id": spec["item_id"], "value": result}
-
-
 def _pool_thread(
     *,
     fn: Callable[..., Any],
-    specs: list[dict[str, Any]],
-    runtime: ControlRoomRuntime,
+    jobs: list[Any],
+    runtime: mqdm.Runtime,
     result_queue: queue.Queue,
     desc: str,
     n_workers: int,
     pool_mode: str,
-    ordered: bool,
     fn_kw: dict[str, Any] | None,
 ) -> None:
+    # No wrapper: mqdm emits task_started/finished/failed and tags every event
+    # with worker + task_index context (because runtime.on_event is set).
+    # ordered_=True so the returned values line up with task indices.
     try:
-        results = mqdm.pool(
-            _run_control_room_job,
-            specs,
+        results = list(mqdm.pool(
+            fn,
+            jobs,
             runtime=runtime,
             desc=desc,
             n_workers=n_workers,
             pool_mode=pool_mode,
-            ordered_=ordered,
+            ordered_=True,
             squeeze_=False,
-            target=fn,
-            fn_kw=fn_kw or {},
             bar_kw={
                 "start": False,
                 "progress_kw": {
@@ -221,12 +288,12 @@ def _pool_thread(
                     "silent": True,
                 },
             },
-        )
+            **(fn_kw or {}),
+        ))
         result_queue.put({"type": "pool_results", "results": results})
-    except BaseException as exc:
+    except BaseException:
         result_queue.put({
             "type": "pool_error",
-            "error": repr(exc),
             "traceback": traceback.format_exc(),
         })
 
@@ -318,11 +385,6 @@ class ControlRoomApp(App[None]):
         color: #b8dff2;
         margin: 0 1;
     }
-
-    .meta {
-        color: #95a6b3;
-        margin: 0 1;
-    }
     """
 
     BINDINGS = [
@@ -344,7 +406,6 @@ class ControlRoomApp(App[None]):
         desc: str,
         n_workers: int,
         pool_mode: str,
-        ordered: bool,
         refresh_hz: int,
         refresh_per_second: float = 20.0,
         label: Callable[[Any, int], str] | None = None,
@@ -355,20 +416,17 @@ class ControlRoomApp(App[None]):
     ) -> None:
         super().__init__()
         self.specs = _make_job_specs(jobs, label=label)
-        self.work_items = {
-            spec["item_id"]: WorkItem(item_id=spec["item_id"], label=spec["label"], job_repr=spec["job_repr"])
-            for spec in self.specs
-        }
+        self.model = ControlRoomModel(self.specs)
         self.refresh_hz = refresh_hz
         self.refresh_per_second = refresh_per_second
-        self.worker_views: dict[str, WorkerView] = {}
-        self.pool_done = False
-        self.pool_traceback: str | None = None
         self.queue_row_map: list[int] = []
 
         self.mp_manager = mp.Manager()
         self.event_queue = self.mp_manager.Queue()
-        self.runtime = ControlRoomRuntime(self.event_queue)
+        # A plain mqdm.Runtime with a queue sink — no subclass needed. Every event
+        # a worker emits (print/log + task lifecycle) lands on this queue, tagged
+        # with worker + task_index context.
+        self.runtime = mqdm.Runtime(on_event=self.event_queue.put)
         if install_logging:
             self.runtime.install_logging(logger=logger, level=log_level, capture_warnings="process")
 
@@ -378,13 +436,12 @@ class ControlRoomApp(App[None]):
             target=_pool_thread,
             kwargs={
                 "fn": fn,
-                "specs": self.specs,
+                "jobs": [spec["item"] for spec in self.specs],
                 "runtime": self.runtime,
                 "result_queue": self.local_events,
                 "desc": desc,
                 "n_workers": n_workers,
                 "pool_mode": pool_mode,
-                "ordered": ordered,
                 "fn_kw": fn_kw,
             },
             daemon=True,
@@ -450,7 +507,7 @@ class ControlRoomApp(App[None]):
     @on(TabbedContent.TabActivated, "#worker-tabs")
     def _on_worker_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         pane_id = getattr(event.pane, "id", "") or ""
-        for worker_key in self.worker_views:
+        for worker_key in self.model.worker_views:
             if _pane_id(worker_key) == pane_id:
                 self.active_worker_key = worker_key
                 break
@@ -458,14 +515,11 @@ class ControlRoomApp(App[None]):
     def watch_selected_item_id(self, item_id: int) -> None:
         if not self.is_mounted:
             return
-        self._sync_active_worker_to_selection()
         self._refresh_worker_tabs()
-
-    def _ordered_items(self) -> list[WorkItem]:
-        return sorted(self.work_items.values(), key=lambda item: (STATUS_RANK[item.status], item.item_id))
+        self._activate_tab_for_selection()
 
     def _move_queue_selection(self, delta: int) -> None:
-        ids = [item.item_id for item in self._ordered_items()]
+        ids = [item.item_id for item in self.model.ordered_items()]
         if not ids:
             return
         try:
@@ -476,41 +530,21 @@ class ControlRoomApp(App[None]):
         self.selected_item_id = ids[next_index]
         self.query_one("#queue", DataTable).move_cursor(row=next_index, animate=False)
 
-    def _sync_active_worker_to_selection(self) -> None:
-        item = self.work_items.get(self.selected_item_id)
+    def _activate_tab_for_selection(self) -> None:
+        # Switch to the selected item's worker tab (the queue->worker link). Only
+        # called from user-driven selection changes, never the periodic refresh,
+        # so the app never steals the active tab on its own.
+        item = self.model.work_items.get(self.selected_item_id)
         if item is None:
             return
-        if item.status == "pending":
-            self.active_worker_key = QUEUE_WORKER_KEY
-        elif item.worker_key and item.worker_key in self.worker_views:
-            self.active_worker_key = item.worker_key
-
-    def _desired_worker_tab_id(self) -> str | None:
-        if not self.active_worker_key:
-            if any(item.status == "pending" for item in self.work_items.values()):
-                return _pane_id(QUEUE_WORKER_KEY)
-            return None
-        return _pane_id(self.active_worker_key)
-
-    def _detail_item_for_worker(self, worker_key: str) -> WorkItem | None:
-        selected = self.work_items.get(self.selected_item_id)
-        if worker_key == QUEUE_WORKER_KEY:
-            if selected is not None and selected.status == "pending":
-                return selected
-            for item in self._ordered_items():
-                if item.status == "pending":
-                    return item
-            return None
-        if selected is not None and selected.worker_key == worker_key:
-            return selected
-        worker = self.worker_views.get(worker_key)
-        if worker is None:
-            return None
-        if worker.current_item_id is not None:
-            return self.work_items.get(worker.current_item_id)
-        if worker.recent_item_ids:
-            return self.work_items.get(worker.recent_item_ids[-1])
-        return None
+        worker_key = QUEUE_WORKER_KEY if item.status == "pending" else item.worker_key
+        if not worker_key or worker_key not in self.model.worker_views:
+            return
+        self.active_worker_key = worker_key
+        try:
+            self.query_one("#worker-tabs", TabbedContent).active = _pane_id(worker_key)
+        except Exception:
+            pass
 
     def _render_input_detail(self, item: WorkItem | None) -> Any:
         if item is None:
@@ -530,17 +564,6 @@ class ControlRoomApp(App[None]):
             return _detail_panel("result", "Task is still running.")
         return _detail_panel("result", "Task completed with no return value.")
 
-    def _logs_for_worker(self, worker_key: str, worker: WorkerView, item: WorkItem | None) -> tuple[str, list[str]]:
-        if worker_key == QUEUE_WORKER_KEY or item is not None:
-            header = item.label if item is not None else "idle"
-        elif worker.current_item_id is not None:
-            current_item = self.work_items.get(worker.current_item_id)
-            header = current_item.label if current_item is not None else "idle"
-        else:
-            header = "idle"
-        lines = list(item.logs)[-LOG_TAIL:] if item is not None and item.logs else []
-        return header, lines
-
     def _refresh_worker_tab(self, worker_key: str, worker: WorkerView) -> None:
         try:
             detail = self.query_one(f"#{_detail_id(worker_key)}", WorkerDetailTabs)
@@ -550,8 +573,8 @@ class ControlRoomApp(App[None]):
         log = detail.query_one("#worker-log", Log)
         input_body = detail.query_one("#worker-input", Static)
         result_body = detail.query_one("#worker-result", Static)
-        item = self._detail_item_for_worker(worker_key)
-        header, lines = self._logs_for_worker(worker_key, worker, item)
+        item = self.model.detail_item_for_worker(worker_key, self.selected_item_id)
+        header, lines = self.model.logs_for_worker(worker_key, worker, item)
         log.clear()
         log.write_line(f"{worker.label} · {header}")
         log.write_line("")
@@ -570,74 +593,15 @@ class ControlRoomApp(App[None]):
                 event = self.local_events.get_nowait()
             except queue.Empty:
                 break
-            dirty = self._apply_event(event) or dirty
+            dirty = self.model.apply_event(event) or dirty
 
         if dirty:
             self._refresh_all()
-        if self.pool_done and not self.pool_thread.is_alive() and self.local_events.empty():
+        if self.model.pool_done and not self.pool_thread.is_alive() and self.local_events.empty():
             self.exit()
 
-    def _apply_event(self, event: dict[str, Any]) -> bool:
-        event_type = event["type"]
-        if event_type == "pool_results":
-            for result in event["results"]:
-                item = self.work_items.get(result["item_id"])
-                if item is not None:
-                    item.result_value = result["value"]
-            self.pool_done = True
-            return True
-        if event_type == "pool_error":
-            self.pool_done = True
-            self.pool_traceback = event.get("traceback")
-            return True
-
-        item = self.work_items.get(event.get("item_id"))
-        worker_key = event.get("worker_key")
-        worker = None
-        if worker_key:
-            worker = self.worker_views.get(worker_key)
-            if worker is None:
-                n_real_workers = sum(1 for key in self.worker_views if key != QUEUE_WORKER_KEY)
-                worker = WorkerView(worker_key=worker_key, label=f"worker {n_real_workers + 1}")
-                self.worker_views[worker_key] = worker
-                self.call_after_refresh(self._ensure_worker_tab, worker_key)
-
-        if event_type == "started" and item is not None and worker is not None:
-            item.status = "running"
-            item.worker_key = worker_key
-            item.result_value = None
-            item.error_summary = None
-            worker.current_item_id = item.item_id
-            if not self.active_worker_key:
-                self.active_worker_key = worker_key
-            return True
-
-        if event_type in ("log", "print") and item is not None and worker is not None:
-            line = event["message"]
-            item.logs.append(line)
-            return True
-
-        if event_type == "finished" and item is not None and worker is not None:
-            item.status = "complete"
-            worker.recent_item_ids.append(item.item_id)
-            worker.current_item_id = None
-            return True
-
-        if event_type == "failed" and item is not None and worker is not None:
-            item.status = "failed"
-            item.error_summary = event.get("error_summary")
-            worker.recent_item_ids.append(item.item_id)
-            worker.current_item_id = None
-            return True
-
-        return False
-
-    def _ensure_queue_worker(self) -> None:
-        if QUEUE_WORKER_KEY not in self.worker_views:
-            self.worker_views[QUEUE_WORKER_KEY] = WorkerView(worker_key=QUEUE_WORKER_KEY, label=QUEUE_WORKER_KEY)
-
     def _ensure_worker_tab(self, worker_key: str) -> None:
-        worker = self.worker_views[worker_key]
+        worker = self.model.worker_views[worker_key]
         tabs = self.query_one("#worker-tabs", TabbedContent)
         pane_id = _pane_id(worker_key)
         if any(getattr(pane, "id", None) == pane_id for pane in tabs.query(TabPane)):
@@ -650,21 +614,20 @@ class ControlRoomApp(App[None]):
 
     def _refresh_all(self) -> None:
         self._refresh_queue()
-        self._sync_active_worker_to_selection()
         self._refresh_worker_tabs()
         # progress pane is painted on its own timer (see on_mount)
 
     def _refresh_queue(self) -> None:
         table = self.query_one("#queue", DataTable)
-        ordered = self._ordered_items()
+        ordered = self.model.ordered_items()
         self.queue_row_map = [item.item_id for item in ordered]
         table.clear(columns=False)
         for item in ordered:
             icon = STATUS_ICON[item.status]
-            worker = self.worker_views.get(item.worker_key or "")
+            worker = self.model.worker_views.get(item.worker_key or "")
             badge = ""
             if item.status != "pending" and worker is not None:
-                badge = _worker_badge(worker.label)
+                badge = str(worker.index)
             table.add_row(icon, badge, item.label)
         if self.queue_row_map:
             try:
@@ -675,18 +638,10 @@ class ControlRoomApp(App[None]):
             table.move_cursor(row=row_index, animate=False)
 
     def _refresh_worker_tabs(self) -> None:
-        real_worker_keys = [worker_key for worker_key in self.worker_views if worker_key != QUEUE_WORKER_KEY]
-        for worker_key in real_worker_keys:
-            self._refresh_worker_tab(worker_key, self.worker_views[worker_key])
-        self._ensure_queue_worker()
-        self._refresh_worker_tab(QUEUE_WORKER_KEY, self.worker_views[QUEUE_WORKER_KEY])
-        tabs = self.query_one("#worker-tabs", TabbedContent)
-        pane_id = self._desired_worker_tab_id()
-        if pane_id is not None:
-            try:
-                tabs.active = pane_id
-            except Exception:
-                pass
+        for worker_key in self.model.real_worker_keys():
+            self._refresh_worker_tab(worker_key, self.model.worker_views[worker_key])
+        self.model.ensure_queue_worker()
+        self._refresh_worker_tab(QUEUE_WORKER_KEY, self.model.worker_views[QUEUE_WORKER_KEY])
 
     def _refresh_progress(self) -> None:
         self.query_one("#progress-render", Static).update(self.runtime.pbar or "")
@@ -699,7 +654,6 @@ def run_control_room(
     desc: str | None = None,
     n_workers: int = 4,
     pool_mode: str = "process",
-    ordered: bool = False,
     refresh_hz: int = 12,
     refresh_per_second: float = 20.0,
     label: Callable[[Any, int], str] | None = None,
@@ -714,7 +668,6 @@ def run_control_room(
         desc=desc or getattr(fn, "__name__", "jobs"),
         n_workers=n_workers,
         pool_mode=pool_mode,
-        ordered=ordered,
         refresh_hz=refresh_hz,
         refresh_per_second=refresh_per_second,
         label=label,
@@ -724,8 +677,8 @@ def run_control_room(
         **fn_kw,
     )
     app.run()
-    if app.pool_traceback:
-        raise RuntimeError(app.pool_traceback)
+    if app.model.pool_traceback:
+        raise RuntimeError(app.model.pool_traceback)
 
 
 def _demo_job(sensor_id: str, *, csv_dir: str, seed: int = 0) -> int:
@@ -762,7 +715,6 @@ def main(
         desc="process sensors",
         n_workers=n_workers,
         pool_mode="process",
-        ordered=False,
         refresh_hz=refresh_hz,
         refresh_per_second=refresh_per_second,
         label=lambda job, _i: mqdm.args.from_item(job).a[0],

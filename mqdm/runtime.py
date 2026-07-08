@@ -7,7 +7,7 @@ import threading
 import weakref
 from collections import OrderedDict
 from time import monotonic
-from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypedDict
+from typing import TYPE_CHECKING, Any, Callable, Literal, TypeAlias, TypedDict
 
 import rich
 from rich import progress
@@ -52,9 +52,14 @@ class Runtime:
     isolated progress or logging behavior.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, on_event: Callable[[dict], Any] | None = None) -> None:
         self.pbar: ProgressLike | None = None
         self.manager: MqdmManager | None = None
+        # When set, emitted events are handed to this sink (a dict) instead of
+        # being rendered to the console. Must be picklable to reach workers — a
+        # multiprocessing manager Queue's ``.put`` qualifies. ``None`` keeps the
+        # default console behavior.
+        self.on_event: Callable[[dict], Any] | None = on_event
         self.pause_event: threading.Event = threading.Event()
         self.pause_event.set()
         self.shutdown_event: threading.Event = threading.Event()
@@ -254,8 +259,20 @@ class Runtime:
         return rich.get_console().print(*args, **kw)
 
     def emit(self, event_type: str, **data: Any) -> Any:
-        """Emit an event to the runtime."""
+        """Emit an event. Routes to ``on_event`` if set, else the console."""
+        data.setdefault("context", self.get_context())
+        if self.on_event is not None:
+            return self.on_event({"type": event_type, **data})
         return self.handle_event(event_type, **data)
+
+    def set_base_context(self, **context: Any) -> None:
+        """Set a persistent base context for this thread/worker.
+
+        Unlike :meth:`context` (a scoped push/pop), this seeds long-lived values
+        such as worker identity that every subsequent event should carry.
+        """
+        from .executor import _set_local
+        _set_local(**{_RUNTIME_CONTEXT_KEY: {**self.get_context(), **context}})
 
     def print(self, *args: Any, **kw: Any) -> Any:
         return self.emit("print", args=args, kw=kw)
