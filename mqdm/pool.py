@@ -58,7 +58,28 @@ class _TaskOutcome:
     @property
     def succeeded(self) -> bool:
         return self.error is None
-    
+
+
+@dataclass
+class Result:
+    """A single task's outcome: its input, return value, and any error.
+
+    ``index`` matches the ``task_index`` carried on the event stream, so a result
+    correlates to its live events by key rather than by completion order.
+    """
+    index: int
+    arg: utils.args
+    value: R | None = None
+    error: BaseException | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
+
+
+def _make_result(outcome: _TaskOutcome) -> Result:
+    return Result(index=outcome.task.index, arg=outcome.task.display_arg, value=outcome.value, error=outcome.error)
+
 
 # ---------------------------------------------------------------------------- #
 #                                 Pool / iPool                                 #
@@ -74,6 +95,7 @@ def ipool(
         pool_mode: T_POOL_MODE='process',
         ordered_: bool=False,
         squeeze_: bool=True,
+        as_result_: bool=False,
         on_error: Literal['finish', 'cancel', 'skip']='cancel',
         runtime: Runtime | None=None,
         **kw: Any) -> Iterator[R]:
@@ -114,6 +136,21 @@ def ipool(
     )
 
     remote_exceptions: RemoteExceptionMap = {}
+
+    def _emit(outcome: _TaskOutcome) -> Iterator[Any]:
+        # Decide what (if anything) an outcome yields. `as_result_` yields a
+        # Result record (identity + value/error); otherwise the bare value.
+        if outcome.succeeded:
+            yield _make_result(outcome) if as_result_ else outcome.value
+            return
+        if plan.on_error == 'skip':
+            _add_func_args_str_to_exception(outcome.error, plan.fn, outcome.task.display_arg)
+            plan.runtime.print(''.join(traceback.format_exception(type(outcome.error), outcome.error, outcome.error.__traceback__)))
+            if as_result_:  # surface skipped failures inline instead of dropping them
+                yield _make_result(outcome)
+            return
+        _append_remote_exception(remote_exceptions, outcome.error, plan.fn, outcome.task.display_arg)
+
     try:
         with mqdm(
             desc=plan.desc,
@@ -156,24 +193,10 @@ def ipool(
                         if plan.ordered:
                             ready[task.index] = outcome
                             while next_index in ready:
-                                outcome = ready.pop(next_index)
+                                yield from _emit(ready.pop(next_index))
                                 next_index += 1
-                                if outcome.succeeded:
-                                    yield outcome.value
-                                    continue
-                                if plan.on_error == 'skip':
-                                    _add_func_args_str_to_exception(outcome.error, plan.fn, outcome.task.display_arg)
-                                    plan.runtime.print(''.join(traceback.format_exception(type(outcome.error), outcome.error, outcome.error.__traceback__)))
-                                    continue
-                                _append_remote_exception(remote_exceptions, outcome.error, plan.fn, outcome.task.display_arg)
                         else:
-                            if outcome.succeeded:
-                                yield outcome.value
-                            elif plan.on_error == 'skip':
-                                _add_func_args_str_to_exception(outcome.error, plan.fn, outcome.task.display_arg)
-                                plan.runtime.print(''.join(traceback.format_exception(type(outcome.error), outcome.error, outcome.error.__traceback__)))
-                            else:
-                                _append_remote_exception(remote_exceptions, outcome.error, plan.fn, outcome.task.display_arg)
+                            yield from _emit(outcome)
 
                         while len(in_flight) < plan.max_in_flight:
                             task = _submit_next(executor, plan, pbar, indexed_iter)
@@ -207,6 +230,7 @@ def pool(
         results_: list[R] | None=None,
         ordered_: bool=True,
         squeeze_: bool=True,
+        as_result_: bool=False,
         runtime: Runtime | None=None,
         **kw: Any) -> list[R]:
     """Collect ``ipool`` results into a list.
@@ -229,7 +253,7 @@ def pool(
         A list of collected results.
     """
     results_ = [] if results_ is None else results_
-    for x in ipool(fn, iter, desc=desc, bar_kw=bar_kw, n_workers=n_workers, pool_mode=pool_mode, ordered_=ordered_, squeeze_=squeeze_, runtime=runtime, **kw):
+    for x in ipool(fn, iter, desc=desc, bar_kw=bar_kw, n_workers=n_workers, pool_mode=pool_mode, ordered_=ordered_, squeeze_=squeeze_, as_result_=as_result_, runtime=runtime, **kw):
         results_.append(x)
     return results_
 

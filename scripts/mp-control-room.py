@@ -135,11 +135,14 @@ class ControlRoomModel:
         """Fold one event into the model. Returns whether anything changed."""
         event_type = event["type"]
         if event_type == "pool_results":
-            # results are ordered by task index (see _pool_thread)
-            for index, value in enumerate(event["results"]):
-                item = self.work_items.get(index)
-                if item is not None:
-                    item.result_value = value
+            for r in event["results"]:      # mqdm Result records, correlated by index
+                item = self.work_items.get(r.index)
+                if item is None:
+                    continue
+                if r.ok:
+                    item.result_value = r.value
+                else:
+                    item.error_summary = _preview(r.error)
             self.pool_done = True
             return True
         if event_type == "pool_error":
@@ -267,7 +270,8 @@ def _pool_thread(
 ) -> None:
     # No wrapper: mqdm emits task_started/finished/failed and tags every event
     # with worker + task_index context (because runtime.on_event is set).
-    # ordered_=True so the returned values line up with task indices.
+    # as_result_=True returns Result records so values correlate to items by
+    # index — no dependence on completion order.
     try:
         results = list(mqdm.pool(
             fn,
@@ -276,7 +280,7 @@ def _pool_thread(
             desc=desc,
             n_workers=n_workers,
             pool_mode=pool_mode,
-            ordered_=True,
+            as_result_=True,
             squeeze_=False,
             bar_kw={
                 "start": False,

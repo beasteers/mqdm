@@ -86,11 +86,8 @@ from .pool import ipool, pool
 from ._dev import bp, embed, iex, inp, profile, timeit
 M.input = inp
 
-mqpool = pool
-mqipool = ipool
-
 __all__ = [
     'mqdm',
-    'mqpool',
-    'mqipool',
+    'pool',
+    'ipool',
 ]
