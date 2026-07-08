@@ -120,6 +120,7 @@ def ipool(
             total=plan.total if plan.total >= 0 else None,
             elapsed_speed=True,
             runtime=plan.runtime,
+            pool_mode=plan.pool_mode,
             **plan.bar_kw,
         ) as pbar:
             executor = M.executor(plan.pool_mode, bar_kw=plan.worker_bar_kw, max_workers=plan.n_workers, runtime=plan.runtime)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import atexit
+from contextlib import contextmanager
 import logging
 import threading
 import weakref
@@ -39,6 +40,7 @@ WarningCapturePolicy: TypeAlias = "bool | Literal['process']"
 
 _all_runtimes: weakref.WeakSet[Runtime] = weakref.WeakSet()
 _LOCAL_EVENT_TYPE = type(threading.Event())
+_RUNTIME_CONTEXT_KEY = "runtime_context"
 
 
 class Runtime:
@@ -96,7 +98,7 @@ class Runtime:
         _all_runtimes.add(self)
 
     def prepare_pool_worker(self, pool_mode: T_POOL_MODE = None) -> None:
-        self.get_pbar(pool_mode=pool_mode)
+        self.get_pbar(pool_mode=pool_mode, start=True)
         self.pause_event.set()
         self.shutdown_event.set()
 
@@ -213,10 +215,50 @@ class Runtime:
                 self.pause_event.set()
         return _pause_exit(prev_paused)
 
+    def get_context(self) -> dict[str, Any]:
+        from .executor import _get_local
+        return dict(_get_local(_RUNTIME_CONTEXT_KEY, {}) or {})
+
+    @contextmanager
+    def context(self, **context: Any):
+        from .executor import _clear_local, _set_local
+
+        prev = self.get_context()
+        _set_local(**{_RUNTIME_CONTEXT_KEY: {**prev, **context}})
+        try:
+            yield self
+        finally:
+            if prev:
+                _set_local(**{_RUNTIME_CONTEXT_KEY: prev})
+            else:
+                _clear_local(_RUNTIME_CONTEXT_KEY)
+
+    def handle_event(self, event_type: str, **data: Any) -> Any:
+        """Dispatch a runtime event. Override to centralize/customize output.
+
+        Terminal output is delegated to :meth:`_write`, which routes through the
+        active progress bar so it lands in whichever process owns the live
+        display (the manager process in ``pool_mode='process'``).
+        """
+        data.setdefault("context", self.get_context())
+        if event_type == "print":
+            return self._write(*data.get("args", ()), **data.get("kw", {}))
+        if event_type == "log":
+            return self._write(data.get("message", ""), markup=data.get("markup", True))
+        return None
+
+    def _write(self, *args: Any, **kw: Any) -> Any:
+        pbar = self.pbar
+        if pbar is not None:
+            return pbar.write(*args, **kw)
+        return rich.get_console().print(*args, **kw)
+
+    def emit(self, event_type: str, **data: Any) -> Any:
+        """Emit an event to the runtime."""
+        return self.handle_event(event_type, **data)
+
     def print(self, *args: Any, **kw: Any) -> Any:
-        if self.pbar is not None:
-            return self.pbar.print(*args, **kw)
-        return rich.print(*args, **kw)
+        return self.emit("print", args=args, kw=kw)
 
     def install_worker_context(
         self,

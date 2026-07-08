@@ -1,4 +1,5 @@
 import logging
+from types import SimpleNamespace
 import warnings
 
 import mqdm as M
@@ -6,6 +7,16 @@ import mqdm.runtime as runtime_mod
 from mqdm import install_logging, uninstall_logging
 from mqdm import _logging as logging_mod
 from mqdm._logging import MQDMHandler, capture_warnings, release_warnings
+
+
+class _RecordingRuntime(M.Runtime):
+    def __init__(self):
+        super().__init__()
+        self.events = []
+
+    def emit(self, event_type: str, **data):
+        self.events.append((event_type, data))
+        return super().emit(event_type, **data)
 
 
 def _reset_warning_capture_state():
@@ -219,3 +230,63 @@ def test_uninstall_logging_without_logger_removes_named_logger_handlers():
 
     assert not any(isinstance(h, MQDMHandler) and h.runtime is runtime for h in logger.handlers)
     assert not list(runtime.logging_handlers)
+
+
+def test_runtime_context_scopes_and_restores():
+    runtime = M.Runtime()
+
+    assert runtime.get_context() == {}
+
+    with runtime.context(task="outer"):
+        assert runtime.get_context() == {"task": "outer"}
+        with runtime.context(worker=2):
+            assert runtime.get_context() == {"task": "outer", "worker": 2}
+        assert runtime.get_context() == {"task": "outer"}
+
+    assert runtime.get_context() == {}
+
+
+def test_logging_handler_routes_context_through_runtime_emit():
+    runtime = _RecordingRuntime()
+    logger = logging.getLogger("mqdm.test.context")
+    uninstall_logging(runtime=runtime)
+
+    try:
+        runtime.install_logging(logger=logger, level=logging.INFO)
+        with runtime.context(item_id=7, worker="w2"):
+            logger.info("hello")
+    finally:
+        runtime.uninstall_logging(logger=logger)
+
+    log_events = [event for event in runtime.events if event[0] == "log"]
+    assert len(log_events) == 1
+    _, payload = log_events[0]
+    assert payload["context"] == {"item_id": 7, "worker": "w2"}
+    assert "hello" in payload["message"]
+
+
+def test_runtime_handle_event_print_accepts_rich_markup_kwargs(capsys):
+    runtime = M.Runtime()
+
+    runtime.handle_event("print", args=("[bold]hello[/bold]",), kw={"markup": True})
+
+    assert "hello" in capsys.readouterr().out
+
+
+def test_runtime_emit_routes_through_pbar():
+    runtime = M.Runtime()
+    calls = []
+    runtime.pbar = SimpleNamespace(write=lambda *a, **kw: calls.append((a, kw)))
+
+    runtime.emit("print", args=("hello",), kw={})
+
+    assert calls == [(("hello",), {})]
+
+
+def test_runtime_emit_falls_back_to_console_without_pbar(capsys):
+    runtime = M.Runtime()
+    runtime.pbar = None
+
+    runtime.emit("print", args=("hello",), kw={})
+
+    assert "hello" in capsys.readouterr().out

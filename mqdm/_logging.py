@@ -29,7 +29,15 @@ class MQDMHandler(logging.Handler):
                 style = self.LEVEL_STYLE.get(record.levelno, "")
                 if style:
                     msg = f"[{style}]{msg}[/{style}]"
-            self.runtime.print(msg)
+            self.runtime.emit(
+                "log",
+                message=msg,
+                markup=self.markup,
+                logger_name=record.name,
+                level=record.levelno,
+                level_name=record.levelname,
+                context=self.runtime.get_context(),
+            )
         except Exception:
             self.handleError(record)
 

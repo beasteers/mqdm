@@ -1,3 +1,4 @@
+import io
 from collections import deque
 import dataclasses
 from dataclasses import dataclass
@@ -7,6 +8,7 @@ import multiprocessing as mp
 from multiprocessing.managers import BaseProxy, SyncManager
 import multiprocessing.managers
 import rich
+from rich.console import Console
 from rich import progress
 import mqdm as M
 
@@ -61,17 +63,28 @@ class TaskSnapshot:
 class Progress(progress.Progress):
     multiprocess = False
 
-    def __init__(self, *columns, _tasks=None, _task_index=None, _pause_event=None, **kw):
+    def __init__(self, *columns, _tasks=None, _task_index=None, _pause_event=None, silent=False, **kw):
+        # Record init options before injecting the silent console so convert_proxy
+        # round-trips `silent` (and re-creates the sink console on the other side)
+        # rather than pickling the local StringIO console.
+        self._init_options = dict(kw)
+        if silent:
+            self._init_options['silent'] = True
+            kw.setdefault('console', Console(file=io.StringIO(), force_terminal=True))
         super().__init__(*columns, **kw)
 
-        self._init_options = kw
         if _tasks is not None:
             self._tasks = {task_id: self._load_task(TaskSnapshot.from_dict(task)) for task_id, task in _tasks.items()}
         self._task_index = progress.TaskID(_task_index or 0)
 
-    def print(self, *args, **kw):
-        """Print to the console."""
-        rich.print(*args, **kw)
+    def write(self, *args, **kw):
+        """Print above the live progress display.
+
+        Uses this Progress's own console so the output interleaves with the
+        live region. When called through a ``ProgressProxy`` the write is
+        routed into the process that owns the real ``Progress`` (and its Live).
+        """
+        self.console.print(*args, **kw)
 
     @wraps(progress.Progress.update)
     def update(self, task_id, **kw):
@@ -157,11 +170,23 @@ class Progress(progress.Progress):
             return {task_id: self._dump_task(self._tasks[task_id]).to_dict() for task_id in self._tasks}
 
     def dump_render_state(self):
+        # Static parts (columns/init_options) plus the current task state and the
+        # source clock, for building a mirror in another process. Pulled once.
         return {
             'columns': self.columns,
             'tasks': self.dump_tasks(),
             'init_options': self._init_options,
+            'now': self.get_time(),
         }
+
+    def dump_live_state(self):
+        # Just the frequently-changing parts: task snapshots + source clock. This
+        # is the per-frame pull once a mirror already exists.
+        with self._lock:
+            return {
+                'now': self.get_time(),
+                'tasks': {task_id: self._dump_task(self._tasks[task_id]).to_dict() for task_id in self._tasks},
+            }
 
     def dump_task(self, task_id):
         with self._lock:
@@ -257,27 +282,44 @@ class ProgressProxy(BaseProxy):
     refresh = proxymethod(Progress.refresh)
     start = proxymethod(Progress.start)
     stop = proxymethod(Progress.stop)
-    print = proxymethod(Progress.print)
+    write = proxymethod(Progress.write)
     dump_task = proxymethod(Progress.dump_task)
     dump_tasks = proxymethod(Progress.dump_tasks)
     dump_render_state = proxymethod(Progress.dump_render_state)
+    dump_live_state = proxymethod(Progress.dump_live_state)
     load_task = proxymethod(Progress.load_task)
     new_task = proxymethod(Progress.new_task)
     pop_task = proxymethod(Progress.pop_task)
     clear = proxymethod(Progress.clear)
 
+    # Local mirror Progress reused across renders (see _render_progress).
+    _mirror = None
+
     def _render_progress(self):
-        state = self.dump_render_state()
-        init_options = dict(state['init_options'])
-        init_options['auto_refresh'] = False
-        init_options.setdefault('expand', True)
-        mirror = Progress(*state['columns'], **init_options)
-        for task_id in sorted(state['tasks']):
-            mirror.load_task(state['tasks'][task_id], start=False)
+        # Build the mirror once — columns/init_options are static — then on each
+        # render pull only task state + the source clock and rebuild the (cheap)
+        # Task objects into the cached mirror. This avoids re-pickling static state
+        # and rebuilding the whole Progress/Live every frame.
+        mirror = self._mirror
+        if mirror is None:
+            state = self.dump_render_state()
+            init_options = {'expand': True, **state['init_options'], 'auto_refresh': False}
+            mirror = self._mirror = Progress(*state['columns'], **init_options)
+            # Freeze the mirror's clock to the source's `now` so elapsed/speed use
+            # the same monotonic origin as the task timestamps (the local
+            # monotonic() would be a different, meaningless origin).
+            mirror.get_time = lambda: mirror._source_now
+        else:
+            state = self.dump_live_state()
+        mirror._source_now = state['now']
+        mirror._tasks = {
+            progress.TaskID(int(task_id)): mirror._load_task(TaskSnapshot.from_dict(task), start=False)
+            for task_id, task in sorted(state['tasks'].items(), key=lambda kv: int(kv[0]))
+        }
         return mirror
 
     def __rich_console__(self, console, options):
-        yield from self._render_progress().__rich_console__(console, options)
+        yield self._render_progress().get_renderable()
 
 ProgressProxy._exposed_ = tuple(k for k, v in ProgressProxy.__dict__.items() if getattr(v, '_is_exposed_', False))
 
