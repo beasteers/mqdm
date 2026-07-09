@@ -199,6 +199,19 @@ def test_runtime_is_pickleable():
     assert restored.shutdown_event.is_set()
 
 
+def test_runtime_with_local_progress_is_pickleable():
+    runtime = M.Runtime()
+    bar = M.mqdm(total=1, runtime=runtime)
+
+    try:
+        restored = pickle.loads(pickle.dumps(runtime))
+    finally:
+        bar.close()
+
+    assert isinstance(restored, M.Runtime)
+    assert restored.pbar is None
+
+
 def test_disabled_mqdm_is_pickleable():
     bar = M.mqdm("hello", disable=True)
 

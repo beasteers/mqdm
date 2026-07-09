@@ -12,7 +12,7 @@ import mqdm as M
 
 if TYPE_CHECKING:
     from .executor import T_POOL_MODE
-    from .runtime import ProgressLike
+    from .backend import ProgressBackend
 
 
 T = TypeVar('T')
@@ -169,7 +169,7 @@ class mqdm(Generic[T]):
         self.task_id = task_id
         self.started = start
 
-    def _init_new_task(self, pbar: ProgressLike, task_kw: dict[str, Any], start: bool) -> None:
+    def _init_new_task(self, pbar: ProgressBackend, task_kw: dict[str, Any], start: bool) -> None:
         task_kw.setdefault('total', self._total)
         task_kw.setdefault('description', '')
         self.task_id = pbar.add_task(**task_kw)
@@ -177,7 +177,7 @@ class mqdm(Generic[T]):
 
     def _init_existing_task(
         self,
-        pbar: ProgressLike,
+        pbar: ProgressBackend,
         task_id: TaskId | TaskState,
         task_kw: dict[str, Any],
         start: bool,
@@ -293,7 +293,7 @@ class mqdm(Generic[T]):
             pbar = runtime.pbar
             if pbar is not None:
                 get_desc = self.get_desc
-                pbar.update_(
+                pbar.try_update(
                     task_id, advance=n_acc, 
                     description=get_desc(x, D['_n']-1) if x is not ... and get_desc is not None else None
                 )
@@ -508,7 +508,7 @@ class mqdm(Generic[T]):
 
         pbar = self.runtime.pbar
         if pbar is not None:
-            pbar.update_(self.task_id, **kw)
+            pbar.try_update(self.task_id, **kw)
             return self
         if self._task_dict is not None:
             self._set_task_dict(kw)

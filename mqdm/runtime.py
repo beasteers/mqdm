@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, TypeAlias, TypedDict
 
 import rich
 
+from .backend import ProgressBackend
 from . import utils
 
 if TYPE_CHECKING:
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
     from ._logging import MQDMHandler
     from .bar import mqdm as MQDMBar
     from .executor import T_POOL_MODE
-    from .proxy import MqdmManager, Progress, ProgressProxy
+    from .proxy import MqdmManager
 
 
 class LoggingConfig(TypedDict, total=False):
@@ -31,8 +32,6 @@ class LoggingConfig(TypedDict, total=False):
     formatter_fmt: str | None
     formatter_datefmt: str | None
 
-
-ProgressLike: TypeAlias = "Progress | ProgressProxy"
 WarningCapturePolicy: TypeAlias = "bool | Literal['process']"
 
 
@@ -62,7 +61,7 @@ class Runtime:
         redirect_stderr: bool = True,
         expand: bool = False,
     ) -> None:
-        self.pbar: ProgressLike | None = None
+        self.pbar: ProgressBackend | None = None
         self.manager: MqdmManager | None = None
         # When set, emitted events are handed to this sink (a dict) instead of
         # being rendered to the console. Must be picklable to reach workers — a
@@ -131,6 +130,9 @@ class Runtime:
 
     def __getstate__(self) -> dict[str, Any]:
         state: dict[str, Any] = self.__dict__.copy()
+        pbar = state.get('pbar')
+        if pbar is not None and not getattr(pbar, 'multiprocess', False):
+            state['pbar'] = None
         state['manager'] = None
         state['instances'] = OrderedDict()
         state['logging_handlers'] = None
@@ -198,7 +200,7 @@ class Runtime:
             progress.SpinnerColumn(),
         )
 
-    def new_pbar(self, pool_mode: T_POOL_MODE = None, bytes: bool = False, columns: tuple[Any, ...] | None = None, **kw: Any) -> ProgressLike:
+    def new_pbar(self, pool_mode: T_POOL_MODE = None, bytes: bool = False, columns: tuple[Any, ...] | None = None, **kw: Any) -> ProgressBackend:
         from . import proxy
 
         kw.setdefault('refresh_per_second', 8)
@@ -207,7 +209,7 @@ class Runtime:
             return self.get_manager().mqdm_Progress(*columns, **kw)
         return proxy.Progress(*columns, **kw)
 
-    def get_pbar(self, pool_mode: T_POOL_MODE = None, start: bool = False, **kw: Any) -> ProgressLike:
+    def get_pbar(self, pool_mode: T_POOL_MODE = None, start: bool = False, **kw: Any) -> ProgressBackend:
         pbar = self.pbar
         if pbar is None:
             pbar = self.pbar = self.new_pbar(pool_mode=pool_mode, **{**self._progress_kw, **kw})
@@ -359,7 +361,7 @@ class Runtime:
     def install_worker_context(
         self,
         *,
-        pbar: ProgressLike,
+        pbar: ProgressBackend,
         pause_event: threading.Event,
         shutdown_event: threading.Event,
         logging_config: LoggingConfig | None,

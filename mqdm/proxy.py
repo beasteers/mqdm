@@ -62,6 +62,7 @@ class TaskSnapshot:
 
 class Progress(progress.Progress):
     multiprocess = False
+    paused = False
 
     def __init__(self, *columns, _tasks=None, _task_index=None, _pause_event=None, silent=False, **kw):
         # Record init options before injecting the silent console so convert_proxy
@@ -93,11 +94,13 @@ class Progress(progress.Progress):
         return super().update(task_id, **kw)
     
     @wraps(progress.Progress.update)
-    def update_(self, task_id, **kw):
+    def try_update(self, task_id, **kw):
         try:
             return self.update(task_id, **kw)
         except KeyError as e:
             pass
+
+    update_ = try_update
 
     def add_task(
         self,
@@ -272,13 +275,15 @@ def proxymethod(func):
 
 class ProgressProxy(BaseProxy):
     multiprocess = True
+    paused = False
 
     start_task = proxymethod(Progress.start_task)
     stop_task = proxymethod(Progress.stop_task)
     add_task = proxymethod(Progress.add_task)
     remove_task = proxymethod(Progress.remove_task)
     update = proxymethod(Progress.update)
-    update_ = proxymethod(Progress.update_)
+    try_update = proxymethod(Progress.try_update)
+    update_ = try_update
     refresh = proxymethod(Progress.refresh)
     start = proxymethod(Progress.start)
     stop = proxymethod(Progress.stop)
