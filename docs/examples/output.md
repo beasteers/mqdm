@@ -2,14 +2,6 @@
 
 These helpers matter once your work is no longer just a clean local loop.
 
-## Print above the bars
-
-```python
---8<-- "snippets/output/print.py"
-```
-
-<div id="cast-output-print" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/output/print.cast"></div>
-
 This is the safe version of printing when progress bars are active.
 
 ## Logging without tearing up the terminal

@@ -1,4 +1,5 @@
 import mqdm as M
+import pytest
 
 
 def test_bar_close_open_preserves_task_state():
@@ -167,6 +168,35 @@ def test_bar_live_fast_advance_updates_description():
         assert restored["description"] == "alpha:1"
     finally:
         bar.close()
+
+
+def test_constructor_task_kw_supports_custom_task_fields():
+    runtime = M.Runtime()
+    bar = M.mqdm(total=2, runtime=runtime, task_kw={"flavor": "mint"})
+
+    try:
+        restored = runtime.pbar.dump_task(bar.task_id)
+        assert restored["fields"]["flavor"] == "mint"
+    finally:
+        bar.close()
+
+
+def test_constructor_explicit_aliases_override_task_kw():
+    runtime = M.Runtime()
+    bar = M.mqdm(total=2, runtime=runtime, leave=True, bytes=True, task_kw={"transient": True, "bytes": False})
+
+    try:
+        restored = runtime.pbar.dump_task(bar.task_id)
+        assert restored["fields"]["transient"] is False
+        assert restored["fields"]["bytes"] is True
+    finally:
+        bar.close()
+
+
+def test_constructor_leave_overrides_conflicting_transient():
+    bar = M.mqdm(total=1, disable=True, leave=False, transient=False)
+
+    assert bar._process_args(leave=False, transient=False)["transient"] is True
 
 
 def test_bar_del_swallows_late_close_errors():

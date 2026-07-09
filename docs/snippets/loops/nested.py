@@ -2,8 +2,8 @@ import mqdm
 import time
 
 
-xs = [["a", "b"], ["c", "d", "e"], ["f", "g"]] * 40
+xs = ["apples", "pears", "plums", "figs"]
 
-for x in mqdm.mqdm(xs, desc="groups"):
-    for xi in mqdm.mqdm(x, desc=f"group {len(x)}", leave=False):
-        time.sleep(0.08)
+for fruit in mqdm.mqdm(xs, desc="fruits"):
+    for n in mqdm.mqdm(range(40), desc=fruit, leave=False):
+        time.sleep(0.1)

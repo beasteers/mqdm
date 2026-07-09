@@ -1,7 +1,6 @@
 # Loops
 
-The first thing to know is that `mqdm.mqdm(xs)` should feel as ordinary as
-`tqdm.tqdm(xs)`.
+Basic usage of `mqdm` is to wrap a loop with a progress bar. 
 
 ## Simple sequential
 
@@ -9,9 +8,7 @@ The first thing to know is that `mqdm.mqdm(xs)` should feel as ordinary as
 --8<-- "snippets/loops/simple.py"
 ```
 
-<div id="cast-loops-simple" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/loops/simple.cast"></div>
-
-That is the basic shape. In real code, this is usually all there is.
+<div id="cast-loops-simple" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/loops/simple.cast" data-rows="5"></div>
 
 ## Nested loops
 
@@ -19,10 +16,7 @@ That is the basic shape. In real code, this is usually all there is.
 --8<-- "snippets/loops/nested.py"
 ```
 
-<div id="cast-loops-nested" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/loops/nested.cast"></div>
-
-This is one of the places `mqdm` starts to feel especially nice: nested bars
-stay readable and visually calm.
+<div id="cast-loops-nested" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/loops/nested.cast" data-rows="5"></div>
 
 ## Dynamic descriptions
 
@@ -30,19 +24,47 @@ stay readable and visually calm.
 --8<-- "snippets/loops/dynamic_desc.py"
 ```
 
-<div id="cast-loops-dynamic" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/loops/dynamic_desc.cast"></div>
+<div id="cast-loops-dynamic" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/loops/dynamic_desc.cast" data-rows="2"></div>
 
-You can still set descriptions manually, but the callable `desc=` form is often
-the cleanest way to keep the bar text close to the data being processed.
+## Wrapping Iterators
 
-## Manual bars
+```python
+--8<-- "snippets/loops/generator.py"
+```
 
-Sometimes you are not iterating directly over the thing you want to count.
+<div id="cast-loops-generator" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/loops/generator.cast" data-rows="5"></div>
+
+## Manual increment
 
 ```python
 --8<-- "snippets/loops/manual.py"
 ```
 
-<div id="cast-loops-manual" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/loops/manual.cast"></div>
+<div id="cast-loops-manual" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/loops/manual.cast" data-rows="5"></div>
 
-This is still very close to the manual `tqdm` style.
+## Printing above the progress bars
+
+Unfortunately, you have to print using `mqdm.print(...)` instead of the built-in `print(...)` to avoid bungling the progress bars. 
+
+Take this up with `rich` or use logging.
+
+```python
+--8<-- "snippets/output/print.py"
+```
+
+<div id="cast-output-print" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/output/print.cast"></div>
+
+## Logging
+```python
+--8<-- "snippets/output/logging.py"
+```
+
+<div id="cast-output-logging" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/output/logging.cast"></div>
+
+## Hide tiny inner loops
+
+```python
+--8<-- "snippets/patterns/hide_tiny_inner_loops.py"
+```
+
+<div id="cast-patterns-hide" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/patterns/hide_tiny_inner_loops.cast"></div>

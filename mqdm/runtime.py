@@ -10,9 +10,7 @@ from time import monotonic
 from typing import TYPE_CHECKING, Any, Callable, Literal, TypeAlias, TypedDict
 
 import rich
-from rich import progress
 
-from . import progress_columns
 from . import utils
 
 if TYPE_CHECKING:
@@ -165,7 +163,10 @@ class Runtime:
         self.pause_event.set()
         self.shutdown_event.set()
 
-    def install_pool_worker(self) -> None:
+    def install_pool_worker(self, pool_mode: T_POOL_MODE = None) -> None:
+        self.pbar = self.get_pbar(pool_mode=pool_mode)
+        self.pbar.start()
+
         cfg = self.logging_config
         if cfg:
             logger_name = cfg.get("logger_name", "root")
@@ -181,11 +182,12 @@ class Runtime:
                 ),
             )
 
-    def new_pbar(self, pool_mode: T_POOL_MODE = None, bytes: bool = False, columns: tuple[Any, ...] | None = None, **kw: Any) -> ProgressLike:
-        from . import proxy
+    def default_progress_columns(self, bytes: bool = False) -> tuple[Any, ...]:
+        """Return the default column layout for a progress bar."""
+        from rich import progress
+        from . import progress_columns
 
-        kw.setdefault('refresh_per_second', 8)
-        columns = columns or (
+        return (
             "[progress.description]{task.description}",
             progress.BarColumn(bar_width=None),
             "[progress.percentage]{task.percentage:>3.0f}%",
@@ -195,6 +197,12 @@ class Runtime:
             progress.TimeRemainingColumn(compact=True),
             progress.SpinnerColumn(),
         )
+
+    def new_pbar(self, pool_mode: T_POOL_MODE = None, bytes: bool = False, columns: tuple[Any, ...] | None = None, **kw: Any) -> ProgressLike:
+        from . import proxy
+
+        kw.setdefault('refresh_per_second', 8)
+        columns = columns or self.default_progress_columns(bytes=bytes)
         if pool_mode == 'process':
             return self.get_manager().mqdm_Progress(*columns, **kw)
         return proxy.Progress(*columns, **kw)
@@ -277,6 +285,19 @@ class Runtime:
                 pbar.start()
                 self.pause_event.set()
         return _pause_exit(prev_paused)
+    
+    @contextmanager
+    def group(self):
+        """Group progress bars."""
+        self.keep_depth += 1
+        self.keep = True
+        try:
+            yield
+        finally:
+            self.keep_depth = max(self.keep_depth - 1, 0)
+            self.keep = self.keep_depth > 0
+            if not self.keep:
+                self.clear_pbar()
 
     def get_context(self) -> dict[str, Any]:
         from .executor import _get_local

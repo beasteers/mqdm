@@ -46,7 +46,7 @@ class mqdm(Generic[T]):
         disable: Whether rendering should be disabled while counters continue to
             update.
         task_id: Existing task identifier or detached task state to restore.
-        init_kw: Extra keyword arguments for the initial task creation.
+        task_kw: Extra keyword arguments for the initial task creation.
         start: Whether the task should start immediately.
         total: Optional total item count.
         completed: Initial completed count.
@@ -54,24 +54,31 @@ class mqdm(Generic[T]):
         bytes: Whether to render byte-oriented columns.
         **fields: Additional task fields forwarded to Rich.
     """
-    # Local mirrors stay valid even when disabled or detached from a live task.
-    pbar: ProgressLike | None = None  # the progress bar instance
-    task_id: TaskId | None = None     # stable task identity
+    # internal state
     _n: int = 0                       # the number of items completed
     _iter: Iterator[T] | None = None  # the item iterator
     _total: float | None = None       # the total number of items to iterate over
     _desc: str | None = None          # the description of the progress bar
+
+    # lifecycle state
     disable: bool = False             # whether to disable the progress bar
     entered: bool = False             # whether the progress bar has called __enter__()
     started: bool = False             # whether the progress bar has beed started (for lazy start)
+    
+    # task state
+    task_id: TaskId | None = None     # stable task identity
     _task_dict: TaskState | None = None  # detached serialized task state
+
+    # methods
     get_desc: DescFunc[T] | None = None  # a function to get the description
     fast_advance: Callable[..., None] | None = None  # a function to update the progress bar in fast loops
     runtime: Runtime                  # runtime that owns this bar's state
 
     def __init__(
             self, 
-            it: Iterable[T] | int | str | None=None, desc: str | DescFunc[T] | None=None, *, 
+            it: Iterable[T] | int | str | None=None, 
+            desc: str | DescFunc[T] | None=None, 
+            *, 
 
             # mqdm arguments
             pool_mode: T_POOL_MODE=None,
@@ -80,7 +87,7 @@ class mqdm(Generic[T]):
             task_id: TaskId | TaskState | None=None,
 
             # rich task arguments
-            init_kw: dict[str, Any] | None=None,
+            task_kw: dict[str, Any] | None=None,
             completed: int = 0,
             total: float|None = None,
             start: bool = True,
@@ -99,19 +106,20 @@ class mqdm(Generic[T]):
             disable=disable,
         )
 
-        start, bind_kw = self._init_task(
+        bind_kw = self._init_task(
             pool_mode=pool_mode,
             task_id=task_id,
             start=start,
-            desc=desc,
-            total=total,
-            init_kw=init_kw,
-            completed=completed,
-            visible=visible,
-            bytes=bytes,
-            **fields,
+            task_kw={
+                **(task_kw or {}),
+                'total': total,
+                'completed': completed,
+                'description': desc,
+                'visible': visible,
+                'bytes': bytes,
+                **fields,
+            },
         )
-        self.started = start
         self._reset_fast_advance()
 
         self(it, desc=..., **bind_kw)  # bind iterable and update progress bar
@@ -120,89 +128,80 @@ class mqdm(Generic[T]):
             self, *,
             runtime: Runtime | None,
             disable: bool | None) -> None:
-        self.runtime = runtime or _get_local('runtime', M._current_runtime())
+        self.runtime = runtime or M._current_runtime()
         self.disable = self.disable if disable is None else disable
 
     def _init_task(
             self, *,
             pool_mode,
             task_id: TaskId | TaskState | None,
+            task_kw: dict[str, Any] | None,
             start: bool,
-            desc: str | DescFunc[T] | None,
-            total: float | None,
-            init_kw: dict[str, Any] | None,
-            completed: int,
-            visible: bool,
-            bytes: bool,
-            **fields: Any) -> tuple[bool, dict[str, Any]]:
+    ) -> dict[str, Any]:
         bind_kw: dict[str, Any] = {}
-        init_kw = self._process_args(initial=True, **{
+        task_kw = self._process_args(initial=True, **{
             **_get_local('defaults', {}), 
-            **(init_kw or {}),
-            'description': desc,
-            'start': start,
-            'total': total,
-            'completed': completed,
-            'visible': visible,
-            'bytes': bytes,
-            **fields,
+            **task_kw,
         })
 
         if self.disable:
-            if task_id is None:
-                self.task_id = None
-            elif isinstance(task_id, dict):
-                self._task_dict = task_id
-                self.task_id = task_id['id']
-                self._n = task_id.get('completed', 0)
-                self._total = task_id.get('total')
-                self._desc = task_id.get('description')
-                start = bool(task_id.get('start_time', start))
-            else:
-                self.task_id = task_id
-            return start, bind_kw
+            self._init_disabled(task_id, start)
+            return bind_kw
 
         pbar = self.runtime.get_pbar(pool_mode=pool_mode)
-        pbar.start()
+        if start:
+            pbar.start()
         self.runtime.add_instance(self)
 
         if task_id is None:
-            start = self._init_new_task(pbar, init_kw, start)
+            self._init_new_task(pbar, task_kw, start)
         else:
-            start, bind_kw = self._init_existing_task(pbar, task_id, init_kw, start)
+            bind_kw = self._init_existing_task(pbar, task_id, task_kw, start)
 
-        return start, bind_kw
+        return bind_kw
 
-    def _init_new_task(self, pbar: ProgressLike, init_kw: dict[str, Any], start: bool) -> bool:
-        init_kw.setdefault('total', self._total)
-        init_kw.setdefault('description', '')
-        self.task_id = pbar.add_task(**init_kw)
-        return start
+    def _init_disabled(self, task_id: TaskId | TaskState | None, start: bool) -> None:
+        if isinstance(task_id, dict):
+            self._task_dict = task_id
+            self._init_state_from_task_dict(task_id.get('id'), task_id, start=start)
+            return
+
+        self.task_id = task_id
+        self.started = start
+
+    def _init_new_task(self, pbar: ProgressLike, task_kw: dict[str, Any], start: bool) -> None:
+        task_kw.setdefault('total', self._total)
+        task_kw.setdefault('description', '')
+        self.task_id = pbar.add_task(**task_kw)
+        self.started = start
 
     def _init_existing_task(
         self,
         pbar: ProgressLike,
         task_id: TaskId | TaskState,
-        init_kw: dict[str, Any],
+        task_kw: dict[str, Any],
         start: bool,
-    ) -> tuple[bool, dict[str, Any]]:
+    ) -> dict[str, Any]:
         bind_kw: dict[str, Any] = {}
         if isinstance(task_id, dict):
             self._task_dict = task_dict = task_id
             task_id = task_id['id']
         else:
-            bind_kw = init_kw
+            bind_kw = task_kw
             try:
                 task_dict = pbar.dump_task(task_id) or {}
             except KeyError:
                 task_dict = {}
 
-        self.task_id = task_id
+        self._init_state_from_task_dict(task_id, task_dict, start=start)
+        return bind_kw
+    
+    def _init_state_from_task_dict(self, task_id, task_dict: TaskState, start: bool=False) -> None:
+        self.task_id = task_id or task_dict.get('id')
         self._n = task_dict.get('completed', 0)
         self._total = task_dict.get('total')
         self._desc = task_dict.get('description')
-        start = bool(task_dict.get('start_time', start))
-        return start, bind_kw
+        self.started = bool(task_dict.get('start_time', start))
 
     # ------------------------------ Dunder methods ------------------------------ #
 
@@ -268,7 +267,6 @@ class mqdm(Generic[T]):
         delta = 1 / (self.runtime.progress_options.get('refresh_per_second') or 8)
         runtime = self.runtime
         task_id = self.task_id
-        get_desc = self.get_desc
 
         def disabled_update(x: T | object=..., n: int=1, flush: bool=False, wait: bool=True) -> None:
             D['_n'] += n
@@ -294,6 +292,7 @@ class mqdm(Generic[T]):
 
             pbar = runtime.pbar
             if pbar is not None:
+                get_desc = self.get_desc
                 pbar.update_(
                     task_id, advance=n_acc, 
                     description=get_desc(x, D['_n']-1) if x is not ... and get_desc is not None else None
@@ -304,6 +303,7 @@ class mqdm(Generic[T]):
                 task = self._task_dict
                 if task is not None:
                     task['completed'] = D['_n']
+                    get_desc = self.get_desc
                     if x is not ... and get_desc is not None:
                         task['description'] = get_desc(x, D['_n']-1)
 
@@ -343,8 +343,8 @@ class mqdm(Generic[T]):
                 kw['total'] = total
             if desc not in (None, ...):
                 kw['description'] = desc
-            return self.update(0, **kw)
-        if isinstance(iter, int):  # implicit range
+            return self.set(**kw)
+        elif isinstance(iter, int):  # implicit range
             iter = range(iter)
 
         total = utils.try_len(iter, self._total) if total is None else total
@@ -399,39 +399,53 @@ class mqdm(Generic[T]):
         self,
         *,
         initial: bool=False,
-        append_total: int | None=None,
         arg: T | object=...,
         i: int | None=None,
         **kw: Any,
     ) -> dict[str, Any]:
         """Normalize task fields and keep local mirrors in sync."""
+        kw = self._normalize_aliases(kw)
+        kw = self._resolve_description(kw, initial=initial, arg=arg, i=i)
+        kw = self._apply_local_state(kw)
+        return kw
+    
+    def _normalize_aliases(self, kw: dict[str, Any]) -> dict[str, Any]:
         kw = {k: v for k, v in kw.items() if v is not ...}
-        if 'leave' in kw:  # tqdm compatibility
-            kw['transient'] = not kw.pop('leave')
 
-        # get progress and total
-        if 'total' in kw:  # keep local copy of total
-            self._total = kw['total']
-        if append_total:
-            kw['total'] = self._total = (self._total or 0) + append_total
-        if kw.get('advance'):
-            kw['advance'] = int(kw['advance'])
-            self._n += kw['advance']
-        if kw.get('advance') == 0:
-            kw.pop('advance')
-        if kw.get('completed') is not None:
-            self._n = kw['completed'] = int(kw['completed'])
+        if "desc" in kw:
+            kw["description"] = kw.pop("desc")
+        if "leave" in kw:
+            kw["transient"] = not kw.pop("leave")
+        return kw
+    
+    def _resolve_description(self, kw: dict[str, Any], *, initial: bool=False, arg: T | object=..., i: int | None=None) -> tuple[dict[str, Any], bool]:
+        if "description" in kw and callable(kw["description"]):
+            self.get_desc = kw.pop("description")
+            
+        if not initial and kw.get("description") is None and self.get_desc is not None and arg is not ...:
+            kw["description"] = self.get_desc(arg, i)
+        if kw.get("description") is None:
+            kw.pop("description", None)
+        return kw
+    
+    def _apply_local_state(self, kw: dict[str, Any], reset_fast_advance: bool=False) -> dict[str, Any]:
+        if "total" in kw:
+            self._total = kw["total"]
 
-        if 'desc' in kw:  # tqdm compatibility
-            kw['description'] = kw.pop('desc')
-        if 'description' in kw and callable(kw['description']):
-            self.get_desc = kw.pop('description')
-        if not initial and kw.get('description') is None and self.get_desc is not None and arg is not ...:
-            kw['description'] = self.get_desc(arg, i)
-        if kw.get('description') is not None:
-            self._desc = kw['description']
-        if 'description' in kw and kw['description'] is None:  # ignore None descriptions
-            kw.pop('description')
+        if kw.get("advance") is not None:
+            kw["advance"] = advance = int(kw["advance"])
+            self._n += advance
+            if advance == 0:
+                kw.pop("advance")
+
+        if kw.get("completed") is not None:
+            self._n = kw["completed"] = int(kw["completed"])
+
+        if kw.get("description") is not None:
+            self._desc = kw["description"]
+
+        if reset_fast_advance and self.fast_advance is not None:
+            self._reset_fast_advance()
 
         return kw
 
@@ -486,24 +500,17 @@ class mqdm(Generic[T]):
 
     def set(self, **kw: Any) -> mqdm[T]:
         """Update progress bar fields."""
-        reset_fast_advance = callable(kw.get('description'))
         kw = self._process_args(**kw)
         if self.disable: return self
 
         if not kw:
-            if reset_fast_advance and self.fast_advance is not None:
-                self._reset_fast_advance()
             return self
 
         pbar = self.runtime.pbar
         if pbar is not None:
             pbar.update_(self.task_id, **kw)
-            if reset_fast_advance and self.fast_advance is not None:
-                self._reset_fast_advance()
             return self
         if self._task_dict is not None:
             self._set_task_dict(kw)
-            if reset_fast_advance and self.fast_advance is not None:
-                self._reset_fast_advance()
             return self
         raise RuntimeError("Cannot update mqdm bar without an attached progress bar or detached task state.")

@@ -5,7 +5,7 @@ from mqdm._logging import MQDMHandler
 def test_pause_context_manager_sets_event_after_exit():
     with M.pause(True):
         pass
-    assert M._runtime.pause_event.is_set()
+    assert M._current_runtime().pause_event.is_set()
 
 
 def test_group_is_nested():

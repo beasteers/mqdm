@@ -3,14 +3,14 @@ import time
 
 
 def process_fn(x):
-    time.sleep(0.22 / x)
+    time.sleep(x)
     return x * 2
 
 
 def main():
-    for result in mqdm.ipool(process_fn, [1, 2, 3, 4], n_workers=3, ordered_=False):
+    delays = [0.9, 0.5, 1.2, 0.7, 0.4, 1.0]
+    for result in mqdm.ipool(process_fn, delays, n_workers=3, ordered_=False):
         mqdm.print(f"result -> {result}")
-    time.sleep(0.2)
 
 
 if __name__ == "__main__":

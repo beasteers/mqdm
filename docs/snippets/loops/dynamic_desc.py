@@ -1,10 +1,11 @@
 import mqdm
 import time
+import random
 
 
-xs = ["alpha", "beta", "gamma", "delta"] * 40
+kinds = ["apples", "pears", "plums", "figs", "bananas", "kiwis", 
+         "mangos", "oranges", "blueberries", "raspberries"]
+xs = [random.choice(kinds) for _ in range(40)]
 
-for x in mqdm.mqdm(xs, desc=lambda x, i: f"Processing item {i}: {x}"):
-    time.sleep(0.12)
-
-time.sleep(0.2)
+for fruit in mqdm.mqdm(xs, desc=lambda n, i: f"Processing item {i}: {fruit}"):
+    time.sleep(0.4)

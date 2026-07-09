@@ -1,9 +1,8 @@
-import mqdm
 import time
+import mqdm
+from mqdm import print
 
 
 for i in mqdm.mqdm(range(4), desc="announcing"):
     time.sleep(0.06)
-    mqdm.print(f"finished step {i + 1}")
-
-time.sleep(0.2)
+    print(f"finished step {i + 1}")

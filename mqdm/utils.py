@@ -30,11 +30,7 @@ class args:
         arg(fn, b=2)
     ```
     '''
-    def __init__(self, *a, _MQDM_PARENT_ARGS_OBJ_=None, **kw):
-        if _MQDM_PARENT_ARGS_OBJ_ is not None:
-            a = _MQDM_PARENT_ARGS_OBJ_.a + a
-            kw = {**_MQDM_PARENT_ARGS_OBJ_.kw, **kw}
-
+    def __init__(self, *a, **kw):
         self.a = a
         self.kw = kw
 
@@ -51,7 +47,7 @@ class args:
 
     @classmethod
     def from_item(cls, x, *a, **kw):
-        return cls(*a, _MQDM_PARENT_ARGS_OBJ_=x, **kw) if isinstance(x, cls) else cls(x, *a, **kw)
+        return cls(*(x.a + a), **{**x.kw, **kw}) if isinstance(x, cls) else cls(x, *a, **kw)
 
     @classmethod
     def from_items(cls, items, *a, **kw):
@@ -107,7 +103,7 @@ class fopen:
         self._pos = self._tell()
         if pbar is None:
             kw.setdefault('desc', os.path.basename(fname))
-            pbar = M.mqdm(init_kw={'bytes': True}, **kw)
+            pbar = M.mqdm(bytes=True, **kw)
         self.pbar = pbar
         self._pbar_managed = not pbar.entered
         pbar.set(total=self.total)

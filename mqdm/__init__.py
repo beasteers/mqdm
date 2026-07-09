@@ -1,27 +1,14 @@
-from contextlib import contextmanager
-
 import mqdm as M  # self
-
 from .runtime import Runtime, _current_runtime, _runtime, configure
 
 
-@contextmanager
 def group():
     """Group progress bars."""
-    runtime = _current_runtime()
-    runtime.keep_depth += 1
-    runtime.keep = True
-    try:
-        yield
-    finally:
-        runtime.keep_depth = max(runtime.keep_depth - 1, 0)
-        runtime.keep = runtime.keep_depth > 0
-        if not runtime.keep:
-            runtime.clear_pbar()
+    return _current_runtime().group()
 
 
 def print(*args, **kw):
-    """Print with rich."""
+    """Print above active progress bars."""
     return _current_runtime().print(*args, **kw)
 
 
@@ -53,10 +40,9 @@ def pause(paused=True):
 # ---------------------------------- Logging --------------------------------- #
 
 
-def install_logging(logger=None, *, level=None, capture_warnings='process', markup=True, formatter=None, runtime=None):
+def install_logging(logger=None, *, level=None, capture_warnings='process', markup=True, formatter=None):
     """Install an MQDMHandler on a logger for a runtime."""
-    runtime = runtime or _current_runtime()
-    return runtime.install_logging(
+    return _current_runtime().install_logging(
         logger=logger,
         level=level,
         capture_warnings=capture_warnings,
@@ -65,14 +51,13 @@ def install_logging(logger=None, *, level=None, capture_warnings='process', mark
     )
 
 
-def uninstall_logging(*, logger=None, runtime=None):
+def uninstall_logging(*, logger=None):
     """Remove an MQDMHandler from a logger for a runtime."""
-    runtime = runtime or _current_runtime()
-    return runtime.uninstall_logging(logger=logger)
+    return _current_runtime().uninstall_logging(logger=logger)
 
 # ----------------------------------- Utils ---------------------------------- #
 
-from .executor import T_POOL_MODE, executor
+from .executor import T_POOL_MODE, get_executor
 from .utils import args, fn, fopen, ratelimit
 from ._logging import MQDMHandler
 

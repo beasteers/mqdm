@@ -34,6 +34,7 @@ class _PoolPlan:
     on_error: Literal['finish', 'cancel', 'skip']
     fn_kw: dict[str, Any]
     total: int
+    discovered_total: int
     max_in_flight: int
     runtime: Runtime
 
@@ -160,7 +161,7 @@ def ipool(
             pool_mode=plan.pool_mode,
             **plan.bar_kw,
         ) as pbar:
-            executor = M.executor(plan.pool_mode, bar_kw=plan.worker_bar_kw, max_workers=plan.n_workers, runtime=plan.runtime)
+            executor = M.get_executor(plan.pool_mode, bar_kw=plan.worker_bar_kw, max_workers=plan.n_workers, runtime=plan.runtime)
             shutdown_wait = True
             shutdown_cancel_futures = False
             executor.__enter__()
@@ -302,6 +303,7 @@ def _make_pool_plan(
         on_error=on_error,
         fn_kw=fn_kw,
         total=total,
+        discovered_total=max(total, 0),
         max_in_flight=max(n_workers, 1),
         runtime=runtime,
     )
@@ -321,7 +323,8 @@ def _submit_next(executor: Executor, plan: _PoolPlan, pbar: mqdm, indexed_iter: 
     call_arg.kw = {**plan.fn_kw, **call_arg.kw}
     future = executor.submit(_task_call, index, plan.fn, call_arg.a, call_arg.kw)
     if plan.total < 0:
-        pbar.set(append_total=1)
+        plan.discovered_total += 1
+        pbar.set(total=plan.discovered_total)
     return _Task(index=index, display_arg=display_arg, future=future)
 
 

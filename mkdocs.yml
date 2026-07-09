@@ -46,7 +46,13 @@ nav:
       - Pools: examples/pools.md
       - Output: examples/output.md
       - Patterns: examples/patterns.md
-  - API Reference: api.md
+      - Integrations: examples/other-pools.md
+  - API Reference:
+      - Overview: api/index.md
+      - mqdm & pool: api/core.md
+      - Utilities: api/helpers.md
+      - Output and Control: api/output.md
+      - Runtime and Configuration: api/runtime.md
 extra_css:
   - https://cdn.jsdelivr.net/npm/asciinema-player@3.8.0/dist/bundle/asciinema-player.css
   - stylesheets/extra.css

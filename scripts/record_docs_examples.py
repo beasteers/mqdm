@@ -10,14 +10,21 @@ import subprocess
 import sys
 import termios
 import time
+import codecs
 from pathlib import Path
+import mqdm
+from mqdm import print
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SNIPPETS_DIR = ROOT / "docs" / "snippets"
 CASTS_DIR = ROOT / "docs" / "assets" / "casts"
-WIDTH = 120
+WIDTH = 100
 HEIGHT = 18
+CAST_OPTIONS = {
+    # Path("home/why_mqdm.py"): {"hold_after_exit": 5.0},
+    Path("home/main.py"): {"hold_after_exit": 1.0, "width": 80, "height": 16},
+}
 
 
 def iter_snippets() -> list[Path]:
@@ -39,14 +46,17 @@ def record(snippet: Path) -> Path:
     rel = snippet.relative_to(SNIPPETS_DIR)
     cast_path = CASTS_DIR / rel.with_suffix(".cast")
     cast_path.parent.mkdir(parents=True, exist_ok=True)
+    options = CAST_OPTIONS.get(rel, {})
+    width = int(options.get("width", WIDTH))
+    height = int(options.get("height", HEIGHT))
 
     env = os.environ.copy()
     env.pop("NO_COLOR", None)
     env.update(
         {
             "PYTHONUNBUFFERED": "1",
-            "COLUMNS": str(WIDTH),
-            "LINES": str(HEIGHT),
+            "COLUMNS": str(width),
+            "LINES": str(height),
             "TERM": "xterm-256color",
             "CLICOLOR_FORCE": "1",
             "FORCE_COLOR": "1",
@@ -56,7 +66,8 @@ def record(snippet: Path) -> Path:
     )
 
     master_fd, slave_fd = pty.openpty()
-    set_winsize(slave_fd, HEIGHT, WIDTH)
+    set_winsize(slave_fd, height, width)
+    decoder = codecs.getincrementaldecoder("utf-8")("replace")
 
     cmd = [sys.executable, str(snippet)]
     proc = subprocess.Popen(
@@ -81,11 +92,24 @@ def record(snippet: Path) -> Path:
                 chunk = b""
             if chunk:
                 dt = round(time.monotonic() - started, 3)
-                events.append([dt, "o", chunk.decode("utf-8", errors="replace")])
+                text = decoder.decode(chunk)
+                if text:
+                    events.append([dt, "o", text])
             elif proc.poll() is not None:
                 break
         if proc.poll() is not None and not ready:
             break
+
+    tail = decoder.decode(b"", final=True)
+    if tail:
+        dt = round(time.monotonic() - started, 3)
+        events.append([dt, "o", tail])
+
+    hold_after_exit = float(options.get("hold_after_exit", 3.0) or 0.0)
+    if hold_after_exit > 0 and events:
+        last_dt = float(events[-1][0])
+        # Preserve a quiet tail in the timeline without changing the final frame.
+        events.append([round(last_dt + hold_after_exit, 3), "o", ""])
 
     os.close(master_fd)
     proc.wait()
@@ -94,8 +118,8 @@ def record(snippet: Path) -> Path:
 
     header = {
         "version": 2,
-        "width": WIDTH,
-        "height": HEIGHT,
+        "width": width,
+        "height": height,
         "timestamp": int(time.time()),
         "env": {"SHELL": "/bin/zsh", "TERM": "xterm-256color"},
     }
@@ -103,15 +127,20 @@ def record(snippet: Path) -> Path:
         f.write(json.dumps(header) + "\n")
         for event in events:
             f.write(json.dumps(event, ensure_ascii=False) + "\n")
+    print(f"recorded {snippet.relative_to(ROOT)} -> {cast_path.relative_to(ROOT)}")
     return cast_path
 
 
-def main(*snippets) -> int:
+def main(*snippets, n_workers=20) -> int:
     snippets = iter_snippets() if not snippets else [ROOT / arg for arg in snippets]
-    for snippet in snippets:
-        cast_path = record(snippet)
-        print(f"recorded {snippet.relative_to(ROOT)} -> {cast_path.relative_to(ROOT)}")
-    return 0
+
+    mqdm.pool(
+        record,
+        snippets,
+        desc="Recording snippets",
+        pool_mode="thread",
+        n_workers=n_workers,
+    )
 
 
 if __name__ == "__main__":

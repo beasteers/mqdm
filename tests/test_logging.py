@@ -67,7 +67,7 @@ def test_install_logging_level_updates_logger_effective_level():
     runtime = M.Runtime()
     root = logging.getLogger()
     old_level = root.level
-    uninstall_logging(runtime=runtime)
+    runtime.uninstall_logging()
 
     try:
         root.setLevel(logging.WARNING)
@@ -81,7 +81,7 @@ def test_install_logging_level_updates_logger_effective_level():
 
 def test_install_logging_defaults_to_process_only_warning_capture():
     runtime = M.Runtime()
-    uninstall_logging(runtime=runtime)
+    runtime.uninstall_logging()
     _reset_warning_capture_state()
 
     original_showwarning = warnings.showwarning
@@ -98,8 +98,8 @@ def test_warning_capture_is_released_only_after_last_runtime_uninstalls():
     rt1 = M.Runtime()
     rt2 = M.Runtime()
 
-    uninstall_logging(runtime=rt1)
-    uninstall_logging(runtime=rt2)
+    rt1.uninstall_logging()
+    rt2.uninstall_logging()
     _reset_warning_capture_state()
 
     original_showwarning = warnings.showwarning
@@ -120,7 +120,7 @@ def test_warning_capture_is_released_only_after_last_runtime_uninstalls():
 
 def test_process_only_warning_capture_activates_in_worker_install(monkeypatch):
     runtime = M.Runtime()
-    uninstall_logging(runtime=runtime)
+    runtime.uninstall_logging()
     _reset_warning_capture_state()
 
     original_showwarning = warnings.showwarning
@@ -132,14 +132,14 @@ def test_process_only_warning_capture_activates_in_worker_install(monkeypatch):
         assert runtime.capture_warnings is True
     finally:
         release_warnings(runtime=runtime)
-        uninstall_logging(runtime=runtime)
+        runtime.uninstall_logging()
         assert warnings.showwarning is original_showwarning
 
 
 def test_process_worker_replays_named_logger(monkeypatch):
     runtime = M.Runtime()
     logger = logging.getLogger("mqdm.worker.target")
-    uninstall_logging(runtime=runtime)
+    runtime.uninstall_logging()
 
     try:
         runtime.install_logging(logger=logger, level=logging.INFO)
@@ -154,7 +154,7 @@ def test_process_worker_replays_named_logger(monkeypatch):
 
 def test_worker_install_respects_capture_warnings_false():
     runtime = M.Runtime()
-    uninstall_logging(runtime=runtime)
+    runtime.uninstall_logging()
     _reset_warning_capture_state()
 
     original_showwarning = warnings.showwarning
@@ -164,7 +164,7 @@ def test_worker_install_respects_capture_warnings_false():
         assert warnings.showwarning is original_showwarning
         assert runtime.capture_warnings is False
     finally:
-        uninstall_logging(runtime=runtime)
+        runtime.uninstall_logging()
 
 
 def test_runtime_pickle_resets_process_local_warning_capture_state():
@@ -180,7 +180,7 @@ def test_runtime_pickle_resets_process_local_warning_capture_state():
 
 def test_capture_warning_helpers_toggle_runtime_state():
     runtime = M.Runtime()
-    uninstall_logging(runtime=runtime)
+    runtime.uninstall_logging()
     _reset_warning_capture_state()
 
     original_showwarning = warnings.showwarning
@@ -194,7 +194,7 @@ def test_capture_warning_helpers_toggle_runtime_state():
         assert warnings.showwarning is original_showwarning
     finally:
         release_warnings(runtime=runtime)
-        uninstall_logging(runtime=runtime)
+        runtime.uninstall_logging()
 
 
 def test_warning_helpers_are_not_part_of_top_level_api():
@@ -205,7 +205,7 @@ def test_warning_helpers_are_not_part_of_top_level_api():
 def test_ensure_on_logger_is_idempotent_and_updates_markup():
     root = logging.getLogger()
     runtime = M.Runtime()
-    uninstall_logging(runtime=runtime)
+    runtime.uninstall_logging()
 
     try:
         first = MQDMHandler.ensure_on_logger(root, runtime, markup=True)
@@ -215,13 +215,13 @@ def test_ensure_on_logger_is_idempotent_and_updates_markup():
         assert second.markup is False
         assert sum(isinstance(h, MQDMHandler) and h.runtime is runtime for h in root.handlers) == 1
     finally:
-        uninstall_logging(runtime=runtime)
+        runtime.uninstall_logging()
 
 
 def test_uninstall_logging_without_logger_removes_named_logger_handlers():
     runtime = M.Runtime()
     logger = logging.getLogger("mqdm.named.cleanup")
-    uninstall_logging(runtime=runtime)
+    runtime.uninstall_logging()
 
     runtime.install_logging(logger=logger, level=logging.INFO)
     assert any(isinstance(h, MQDMHandler) and h.runtime is runtime for h in logger.handlers)
@@ -249,14 +249,14 @@ def test_runtime_context_scopes_and_restores():
 def test_logging_handler_routes_context_through_runtime_emit():
     runtime = _RecordingRuntime()
     logger = logging.getLogger("mqdm.test.context")
-    uninstall_logging(runtime=runtime)
+    runtime.uninstall_logging()
 
     try:
         runtime.install_logging(logger=logger, level=logging.INFO)
         with runtime.context(item_id=7, worker="w2"):
             logger.info("hello")
     finally:
-        runtime.uninstall_logging(logger=logger)
+        runtime.uninstall_logging()
 
     log_events = [event for event in runtime.events if event[0] == "log"]
     assert len(log_events) == 1

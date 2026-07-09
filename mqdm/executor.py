@@ -7,6 +7,8 @@ from concurrent.futures._base import FINISHED, RUNNING
 from concurrent.futures import Future, Executor, ThreadPoolExecutor, ProcessPoolExecutor as _StdlibProcessPoolExecutor
 from concurrent.futures.process import _RemoteTraceback  # used in bar.py
 import mqdm as M
+from .utils import fn as fn_util
+from .runtime import _current_runtime
 
 # ----------- Process Pool Executor with KeyboardInterrupt Handling ---------- #
 
@@ -94,7 +96,7 @@ POOL_EXECUTORS = {
 }
 
 
-def executor(pool_mode: T_POOL_MODE='process', bar_kw: dict=None, runtime=None, **kw) -> Executor:
+def get_executor(pool_mode: T_POOL_MODE='process', bar_kw: dict=None, runtime=None, **kw) -> Executor:
     """Return the appropriate executor for the pool mode of the progress bar."""
     return POOL_EXECUTORS[pool_mode](initializer=Initializer(pool_mode=pool_mode, defaults=bar_kw, runtime=runtime), **kw)
 
@@ -140,16 +142,16 @@ def _worker_identity(pool_mode: T_POOL_MODE) -> dict:
 
 class Initializer:
     def __init__(self, fn: Callable=None, *a, pool_mode: T_POOL_MODE='process', defaults: dict=None, runtime=None, **kw):
-        self.fn = M.fn(fn, *a, **kw) if fn is not None else None
+        self.fn = fn_util(fn, *a, **kw) if fn is not None else None
         self.defaults = defaults if defaults is not None else {}
         self.pool_mode = pool_mode
-        self.runtime = runtime or M._current_runtime()
+        self.runtime = runtime or _current_runtime()
         self.runtime.prepare_pool_worker(pool_mode=pool_mode)
 
     def __call__(self):
         """Initialize the progress bar for the worker thread/process."""
         _set_local(runtime=self.runtime, defaults=self.defaults)
-        self.runtime.install_pool_worker()
+        self.runtime.install_pool_worker(pool_mode=self.pool_mode)
         self.runtime.set_base_context(**_worker_identity(self.pool_mode))
         if self.fn is not None:
             self.fn()
