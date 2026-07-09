@@ -6,7 +6,6 @@ import logging
 import threading
 import weakref
 from collections import OrderedDict
-from time import monotonic
 from typing import TYPE_CHECKING, Any, Callable, Literal, TypeAlias, TypedDict
 
 import rich
@@ -38,6 +37,7 @@ WarningCapturePolicy: TypeAlias = "bool | Literal['process']"
 _all_runtimes: weakref.WeakSet[Runtime] = weakref.WeakSet()
 _LOCAL_EVENT_TYPE = type(threading.Event())
 _RUNTIME_CONTEXT_KEY = "runtime_context"
+DEFAULT_REFRESH_PER_SECOND = 8
 
 
 class Runtime:
@@ -55,7 +55,7 @@ class Runtime:
         *,
         progress_kw: dict[str, Any] | None = None,
         auto_refresh: bool = True,
-        refresh_per_second: float = 8,
+        refresh_per_second: float = DEFAULT_REFRESH_PER_SECOND,
         speed_estimate_period: float = 60.0,
         redirect_stdout: bool = True,
         redirect_stderr: bool = True,
@@ -78,7 +78,6 @@ class Runtime:
         self.keep_depth: int = 0
         self.capture_warnings: bool = False
         self.logging_config: LoggingConfig | None = None
-        self.next_pause_check_time: float = 0
         self.pause_wait_ttl_seconds: float = 0.5
         self._progress_kw: dict[str, Any] = {
             **(progress_kw or {}),
@@ -203,7 +202,6 @@ class Runtime:
     def new_pbar(self, pool_mode: T_POOL_MODE = None, bytes: bool = False, columns: tuple[Any, ...] | None = None, **kw: Any) -> ProgressBackend:
         from . import proxy
 
-        kw.setdefault('refresh_per_second', 8)
         columns = columns or self.default_progress_columns(bytes=bytes)
         if pool_mode == 'process':
             return self.get_manager().mqdm_Progress(*columns, **kw)
@@ -265,15 +263,6 @@ class Runtime:
             if bar is not None:
                 bar.close()
         self.instances.clear()
-
-    def pause_wait(self) -> None:
-        self.pause_event.wait()
-
-    def ttl_pause_wait(self) -> None:
-        now = monotonic()
-        if now >= self.next_pause_check_time:
-            self.next_pause_check_time = now + self.pause_wait_ttl_seconds
-            self.pause_event.wait()
 
     def pause(self, paused: bool = True) -> _pause_exit:
         pbar = self.pbar

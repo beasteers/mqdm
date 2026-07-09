@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from concurrent.futures import Executor, Future, as_completed
 from dataclasses import dataclass
 from functools import wraps
+from time import monotonic
 from typing import Any, TypeVar, Callable, Literal, TypeAlias
 
 import mqdm as M
@@ -32,6 +33,8 @@ class _PoolPlan:
     ordered: bool
     squeeze: bool
     on_error: Literal['finish', 'cancel', 'skip']
+    on_interrupt: Literal['terminate', 'kill']
+    interrupt_grace: float
     fn_kw: dict[str, Any]
     total: int
     discovered_total: int
@@ -98,6 +101,8 @@ def ipool(
         squeeze_: bool=True,
         as_result_: bool=False,
         on_error: Literal['finish', 'cancel', 'skip']='cancel',
+        on_interrupt: Literal['terminate', 'kill']='terminate',
+        interrupt_grace: float=2.0,
         runtime: Runtime | None=None,
         **kw: Any) -> Iterator[R]:
     """Run a function over an iterable with pooled workers and progress updates.
@@ -116,6 +121,11 @@ def ipool(
         on_error: Error policy. ``"cancel"`` raises immediately, ``"skip"``
             logs and continues, and ``"finish"`` aggregates failures and raises
             after submitted work completes.
+        on_interrupt: How to stop process-pool workers on ``KeyboardInterrupt``:
+            ``"terminate"`` (SIGTERM) lets workers catch it and clean up,
+            ``"kill"`` (SIGKILL) is uncatchable but guaranteed.
+        interrupt_grace: Seconds to let still-running workers exit on their own
+            (they received the same Ctrl-C) before force-signalling stragglers.
         runtime: Runtime that should own the progress display.
         **kw: Extra keyword arguments forwarded to ``fn`` for every item.
 
@@ -132,6 +142,8 @@ def ipool(
         ordered=ordered_,
         squeeze=squeeze_,
         on_error=on_error,
+        on_interrupt=on_interrupt,
+        interrupt_grace=interrupt_grace,
         fn_kw=kw,
         runtime=runtime or M._current_runtime(),
     )
@@ -156,7 +168,6 @@ def ipool(
         with mqdm(
             desc=plan.desc,
             total=plan.total if plan.total >= 0 else None,
-            elapsed_speed=True,
             runtime=plan.runtime,
             pool_mode=plan.pool_mode,
             **plan.bar_kw,
@@ -172,12 +183,14 @@ def ipool(
                     ready = {}
                     next_index = 0
 
-                    while len(in_flight) < plan.max_in_flight:
-                        task = _submit_next(executor, plan, pbar, indexed_iter)
-                        if task is None:
-                            break
-                        in_flight[task.future] = task
+                    def _fill() -> None:
+                        while len(in_flight) < plan.max_in_flight:
+                            task = _submit_next(executor, plan, pbar, indexed_iter)
+                            if task is None:
+                                break
+                            in_flight[task.future] = task
 
+                    _fill()
                     while in_flight:
                         future = next(as_completed(in_flight))
                         task = in_flight.pop(future)
@@ -199,14 +212,13 @@ def ipool(
                         else:
                             yield from _emit(outcome)
 
-                        while len(in_flight) < plan.max_in_flight:
-                            task = _submit_next(executor, plan, pbar, indexed_iter)
-                            if task is None:
-                                break
-                            in_flight[task.future] = task
+                        _fill()
                 except KeyboardInterrupt:
                     plan.runtime.pause()
-                    _shutdown_for_interrupt(executor, plan.pool_mode, plan.runtime)
+                    _shutdown_for_interrupt(
+                        executor, plan.pool_mode, plan.runtime,
+                        op=plan.on_interrupt, grace=plan.interrupt_grace,
+                    )
                     shutdown_wait = False
                     shutdown_cancel_futures = True
                     raise
@@ -232,6 +244,8 @@ def pool(
         ordered_: bool=True,
         squeeze_: bool=True,
         as_result_: bool=False,
+        on_interrupt: Literal['terminate', 'kill']='terminate',
+        interrupt_grace: float=2.0,
         runtime: Runtime | None=None,
         **kw: Any) -> list[R]:
     """Collect ``ipool`` results into a list.
@@ -254,7 +268,7 @@ def pool(
         A list of collected results.
     """
     results_ = [] if results_ is None else results_
-    for x in ipool(fn, iter, desc=desc, bar_kw=bar_kw, n_workers=n_workers, pool_mode=pool_mode, ordered_=ordered_, squeeze_=squeeze_, as_result_=as_result_, runtime=runtime, **kw):
+    for x in ipool(fn, iter, desc=desc, bar_kw=bar_kw, n_workers=n_workers, pool_mode=pool_mode, ordered_=ordered_, squeeze_=squeeze_, as_result_=as_result_, on_interrupt=on_interrupt, interrupt_grace=interrupt_grace, runtime=runtime, **kw):
         results_.append(x)
     return results_
 
@@ -281,6 +295,8 @@ def _make_pool_plan(
         ordered: bool,
         squeeze: bool,
         on_error: Literal['finish', 'cancel', 'skip'],
+        on_interrupt: Literal['terminate', 'kill'],
+        interrupt_grace: float,
         fn_kw: dict[str, Any],
         runtime: Runtime) -> _PoolPlan:
     total = utils.try_len(iterable, -1)
@@ -301,6 +317,8 @@ def _make_pool_plan(
         ordered=ordered,
         squeeze=squeeze,
         on_error=on_error,
+        on_interrupt=on_interrupt,
+        interrupt_grace=interrupt_grace,
         fn_kw=fn_kw,
         total=total,
         discovered_total=max(total, 0),
@@ -366,15 +384,47 @@ def _cancel_pending(tasks: list[_Task], executor: Executor) -> None:
     executor.shutdown(wait=False, cancel_futures=True)
 
 
-def _shutdown_for_interrupt(executor: Executor, pool_mode: T_POOL_MODE, runtime: Runtime) -> None:
-    if pool_mode == 'process':
-        try:
-            for pid, process in getattr(executor, '_processes', {}).items():
-                print(f"Killing process {pid}...")
-                process.kill()
-        except Exception as e:
-            runtime.print(f"Error killing processes: {e}")
+def _shutdown_for_interrupt(
+    executor: Executor,
+    pool_mode: T_POOL_MODE,
+    runtime: Runtime,
+    op: Literal['terminate', 'kill'] = 'terminate',
+    grace: float = 2.0,
+) -> None:
+    """Stop worker processes after an interrupt without ever blocking forever.
+
+    Threads can't be force-stopped, so non-process pools just drop queued work
+    and let running tasks unwind. For process pools we replicate the stdlib 3.14
+    ``terminate_workers``/``kill_workers`` pattern (snapshot the processes, shut
+    the executor down non-blocking so a wedged worker can't deadlock us, then
+    signal the survivors) with an added ``grace`` window: workers received the
+    same Ctrl-C SIGINT and are likely already unwinding, so we let them exit on
+    their own and force-signal only the stragglers still alive after ``grace``.
+    """
+    if op not in ('terminate', 'kill'):
+        op = 'terminate'
+    if pool_mode != 'process':
+        executor.shutdown(wait=False, cancel_futures=True)
+        return
+
+    # Snapshot before shutdown(); it invalidates ._processes.
+    procs = list((getattr(executor, '_processes', None) or {}).values())
+    native = getattr(executor, f'{op}_workers', None)
+    if native is not None and not grace:
+        native()  # Python 3.14+: snapshot + non-blocking shutdown + signal.
+        return
+
     executor.shutdown(wait=False, cancel_futures=True)
+    if grace and procs:
+        deadline = monotonic() + grace
+        for p in procs:
+            p.join(timeout=max(0.0, deadline - monotonic()))
+    for p in procs:
+        try:
+            if p.is_alive():
+                getattr(p, op)()  # terminate() -> SIGTERM, kill() -> SIGKILL
+        except (ProcessLookupError, ValueError):
+            pass  # already exited/closed
 
 
 # ---------------------------- Exception Handling ---------------------------- #
@@ -403,7 +453,7 @@ def _combine_remote_exceptions(excs: RemoteExceptionMap, n_fn_limit: int = 10, n
     """Merge the exception arguments into a single string."""
     merged: list[str] = []
     n_fns = sum(len(args) for args in excs.values())
-    for (t, st, tb), args in sorted(excs.items(), key=lambda x: len(x[0]), reverse=True)[:n_tb_limit]:
+    for (t, st, tb), args in sorted(excs.items(), key=lambda x: len(x[1]), reverse=True)[:n_tb_limit]:
         arg_str = '\n'.join(args[:n_fn_limit])
         merged.append(f"{tb}\n Seen in {len(args)} Remote Function(s): \n{arg_str}")
         if len(args) > n_fn_limit:

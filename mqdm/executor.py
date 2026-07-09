@@ -1,10 +1,9 @@
 import os
-import sys
 import threading
 import multiprocessing as mp
 from typing import Callable, Literal
 from concurrent.futures._base import FINISHED, RUNNING
-from concurrent.futures import Future, Executor, ThreadPoolExecutor, ProcessPoolExecutor as _StdlibProcessPoolExecutor
+from concurrent.futures import Future, Executor, ThreadPoolExecutor, ProcessPoolExecutor
 from concurrent.futures.process import _RemoteTraceback  # used in bar.py
 import mqdm as M
 from .utils import fn as fn_util
@@ -12,26 +11,7 @@ from .runtime import _current_runtime
 
 # ----------- Process Pool Executor with KeyboardInterrupt Handling ---------- #
 
-from ._process_pool_keyboard import process_worker_keyboard_interrupt
-_ProcessPoolExecutorCompat = _StdlibProcessPoolExecutor
-if sys.version_info < (3, 11):
-    from ._process_pool_compat import ProcessPoolExecutorCompat as _ProcessPoolExecutorCompat, process_worker_keyboard_interrupt
-
-class ProcessPoolExecutor(_ProcessPoolExecutorCompat):
-    def _spawn_process(self):
-        p = self._mp_context.Process(
-            target=process_worker_keyboard_interrupt,
-            args=(
-                self._call_queue,
-                self._result_queue,
-                self._initializer,
-                self._initargs,
-                self._max_tasks_per_child,
-            ),
-        )
-        p.start()
-        self._processes[p.pid] = p
-
+from ._process_pool_keyboard import ProcessPoolExecutor
 
 # ---------------------------- Sequential Executor --------------------------- #
 
@@ -104,7 +84,6 @@ def get_executor(pool_mode: T_POOL_MODE='process', bar_kw: dict=None, runtime=No
 # -------------------------------- Initializer ------------------------------- #
 
 
-import threading
 _thread_local_data = threading.local()
 def _get_local(key, default=None):
     """Get a thread-local variable."""

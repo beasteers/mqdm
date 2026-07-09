@@ -36,7 +36,7 @@ class SpeedColumn(progress.TransferSpeedColumn):
             return super().render(task)
         speed = task.finished_speed or task.speed
         if speed is None:
-            return progress.Text(f"{speed}", style="progress.data.speed")
+            return progress.Text("", style="progress.data.speed")
         end = '/s'
         if 0 < speed < 1:
             speed = 1 / speed

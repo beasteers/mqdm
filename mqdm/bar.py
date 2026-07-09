@@ -5,7 +5,7 @@ from collections.abc import Callable, Iterable, Iterator
 from time import monotonic
 from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar, TypedDict
 
-from .runtime import Runtime
+from .runtime import Runtime, DEFAULT_REFRESH_PER_SECOND
 from . import utils
 from .executor import _get_local
 import mqdm as M
@@ -264,7 +264,7 @@ class mqdm(Generic[T]):
         D: dict[str, Any] = self.__dict__
         disable = self.disable
         ttl_pause_wait = utils.fn_throttle(self.runtime.pause_event.wait, self.runtime.pause_wait_ttl_seconds)
-        delta = 1 / (self.runtime.progress_options.get('refresh_per_second') or 8)
+        delta = 1 / (self.runtime.progress_options.get('refresh_per_second') or DEFAULT_REFRESH_PER_SECOND)
         runtime = self.runtime
         task_id = self.task_id
 
@@ -418,7 +418,7 @@ class mqdm(Generic[T]):
             kw["transient"] = not kw.pop("leave")
         return kw
     
-    def _resolve_description(self, kw: dict[str, Any], *, initial: bool=False, arg: T | object=..., i: int | None=None) -> tuple[dict[str, Any], bool]:
+    def _resolve_description(self, kw: dict[str, Any], *, initial: bool=False, arg: T | object=..., i: int | None=None) -> dict[str, Any]:
         if "description" in kw and callable(kw["description"]):
             self.get_desc = kw.pop("description")
             

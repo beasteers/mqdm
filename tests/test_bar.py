@@ -96,10 +96,10 @@ def test_bar_close_flush_does_not_wait_on_pause():
     try:
         bar.fast_advance(n=2)
 
-        def fail():
+        def fail(*a, **kw):
             raise AssertionError("close flush should not wait on pause state")
 
-        runtime.ttl_pause_wait = fail
+        runtime.pause_event.wait = fail
         bar.close()
 
         assert bar._task_dict["completed"] == 2

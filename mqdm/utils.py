@@ -71,11 +71,6 @@ class fn(args):
         return self.fn(*self.a, *a, **dict(self.kw, **kw))
 
 
-def maybe_call(fn, *a, **kw):
-    """Call the value if it is callable. Otherwise, return it."""
-    return fn(*a, **kw) if callable(fn) else fn
-
-
 def try_len(it, default=None):
     """Try to get the length of an object, returning a default value if it fails."""
     if it is None:

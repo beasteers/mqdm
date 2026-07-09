@@ -1,6 +1,5 @@
 import importlib
 import inspect
-import sys
 import mqdm
 import pytest
 from mqdm import utils
@@ -89,6 +88,69 @@ def test_fopen_text_mode_tracks_utf8_bytes(tmp_path):
         bar.close()
 
 
-def test_process_pool_compat_flag_matches_python_version():
-    expected_module = 'mqdm._process_pool_compat' if sys.version_info < (3, 11) else 'mqdm._process_pool_keyboard'
-    assert executor_mod.process_worker_keyboard_interrupt.__module__ == expected_module
+class _FakeProc:
+    def __init__(self, alive_after_join):
+        self._alive = True
+        self._alive_after_join = alive_after_join
+        self.joined_timeout = None
+        self.signalled = None
+
+    def join(self, timeout=None):
+        self.joined_timeout = timeout
+        self._alive = self._alive_after_join
+
+    def is_alive(self):
+        return self._alive
+
+    def terminate(self):
+        self.signalled = 'terminate'
+
+    def kill(self):
+        self.signalled = 'kill'
+
+
+class _FakeExecutor:
+    def __init__(self, procs=()):
+        self._processes = {i: p for i, p in enumerate(procs)}
+        self.shutdown_calls = []
+
+    def shutdown(self, wait=True, cancel_futures=False):
+        self.shutdown_calls.append((wait, cancel_futures))
+
+
+def test_shutdown_for_interrupt_signals_only_stragglers():
+    pool_mod = importlib.import_module('mqdm.pool')
+
+    exited = _FakeProc(alive_after_join=False)  # unwinds during grace
+    stuck = _FakeProc(alive_after_join=True)    # still running after grace
+    ex = _FakeExecutor([exited, stuck])
+
+    pool_mod._shutdown_for_interrupt(
+        ex, 'process', mqdm._current_runtime(), op='terminate', grace=0.01,
+    )
+
+    assert ex.shutdown_calls == [(False, True)]  # non-blocking, drops queued
+    assert exited.signalled is None              # exited on its own
+    assert stuck.signalled == 'terminate'        # only the straggler is signalled
+    assert stuck.joined_timeout is not None       # grace join was attempted
+
+
+def test_shutdown_for_interrupt_kill_op():
+    pool_mod = importlib.import_module('mqdm.pool')
+
+    stuck = _FakeProc(alive_after_join=True)
+    ex = _FakeExecutor([stuck])
+    pool_mod._shutdown_for_interrupt(
+        ex, 'process', mqdm._current_runtime(), op='kill', grace=0.01,
+    )
+    assert stuck.signalled == 'kill'
+
+
+def test_shutdown_for_interrupt_non_process_leaves_procs_alone():
+    pool_mod = importlib.import_module('mqdm.pool')
+
+    proc = _FakeProc(alive_after_join=True)
+    ex = _FakeExecutor([proc])
+    pool_mod._shutdown_for_interrupt(ex, 'thread', mqdm._current_runtime())
+    assert ex.shutdown_calls == [(False, True)]
+    assert proc.signalled is None  # threads can't be force-stopped
