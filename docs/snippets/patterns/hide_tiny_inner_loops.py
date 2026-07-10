@@ -1,6 +1,5 @@
 import mqdm
 import time
-import random
 from mqdm import print
 
 

@@ -2,13 +2,12 @@ import time
 import mqdm
 
 import os
-import random
 import tempfile
 
 
-kinds = ["apples", "pears", "plums", "figs", "bananas", "kiwis", 
-         "mangos", "oranges", "blueberries", "raspberries"]
-text = "\n".join(random.choice(kinds) for _ in range(4_000_000))
+fruits = ["apples", "pears", "plums", "figs", "bananas", "kiwis", 
+          "mangos", "oranges", "blueberries", "raspberries"]
+text = "\n".join(fruits * 1_000_000)
 
 with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8") as tmp:
     tmp.write(text)

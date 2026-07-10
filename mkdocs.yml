@@ -34,7 +34,7 @@ plugins:
         python:
           options:
             docstring_style: google
-            show_root_full_path: false
+            show_root_full_path: true
             show_signature_annotations: true
             separate_signature: true
             merge_init_into_class: true
@@ -48,8 +48,9 @@ nav:
       - Integrations: examples/other-pools.md
   - API Reference:
       - Overview: api/index.md
-      - mqdm & pool: api/core.md
-      - Utilities: api/helpers.md
+      - mqdm: api/core.md
+      - pool: api/pool.md
+      - Helpers: api/helpers.md
       - Output and Control: api/output.md
       - Runtime and Configuration: api/runtime.md
 extra_css:
