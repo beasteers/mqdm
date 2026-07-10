@@ -1,9 +1,13 @@
 # Pools
 
-This is the center of the package after `mqdm.mqdm(xs)`.
+`mqdm` provides convenient interfaces for parallel processing with progress bars. 
 
-If `mqdm.mqdm(xs)` is your `tqdm.tqdm(xs)`, then `mqdm.pool(process_fn, xs)` is
-your progress-aware `Pool(...).imap(...)` shape.
+ - `mqdm.pool(func, items)` will run all items in parallel and return a list of results.
+ - `mqdm.ipool(func, items)` will do the same, and will yield results as they complete.
+
+It wraps around `concurrent.futures` (builtin library) and provides a progress bar for monitoring the execution of the task queue.
+
+Additionally, worker functions can have their own progress bars, which integrate seamlessly with the main pool progress display.
 
 ## Simple sequential
 

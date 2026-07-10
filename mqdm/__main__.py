@@ -6,7 +6,7 @@ import time
 import mqdm
 from mqdm import examples
 
-@mqdm.iex
+# @mqdm.iex
 def main():
     _rich_traceback_omit = True
     import fire

@@ -74,8 +74,7 @@ class Runtime:
         self.shutdown_event.set()
         self.instances: OrderedDict[int, ReferenceType[MQDMBar]] = OrderedDict()
         self.logging_handlers: weakref.WeakSet[MQDMHandler] = weakref.WeakSet()
-        self.keep: bool = False
-        self.keep_depth: int = 0
+        self._sustain_depth: int = 0
         self.capture_warnings: bool = False
         self.logging_config: LoggingConfig | None = None
         self.pause_wait_ttl_seconds: float = 0.5
@@ -217,7 +216,7 @@ class Runtime:
             pbar.start()
         return pbar
 
-    def clear_pbar(self, strict: bool = True, force: bool = False, soft: bool = False) -> None:
+    def clear_pbar(self, strict: bool = True, force: bool = False) -> None:
         if force:
             for bar_ref in reversed(list(self.instances.values())):
                 bar = bar_ref()
@@ -233,7 +232,7 @@ class Runtime:
         elif not utils.is_main_process():
             if strict:
                 raise RuntimeError("Cannot clear progress bar in a subprocess.")
-        elif soft or self.keep:
+        elif self._sustain_depth > 0:
             if self.pbar is not None:
                 self.pbar.refresh()
         else:
@@ -278,17 +277,22 @@ class Runtime:
         return _pause_exit(prev_paused)
     
     @contextmanager
-    def group(self):
-        """Group progress bars."""
-        self.keep_depth += 1
-        self.keep = True
+    def sustain(self):
+        """Keep the live progress display alive across this block.
+
+        Normally mqdm tears the display down as soon as the last bar finishes,
+        so a sequence of separate bars renders one at a time — each freezes into
+        the scrollback as the next begins. Inside ``sustain()`` a single display
+        spans the whole block: the bars stack and stay visible together as a
+        growing panel while ``print``/logging flows above them. Nestable.
+        """
+        self._sustain_depth += 1
         try:
             yield
         finally:
-            self.keep_depth = max(self.keep_depth - 1, 0)
-            self.keep = self.keep_depth > 0
-            if not self.keep:
-                self.clear_pbar()
+            self._sustain_depth = max(self._sustain_depth - 1, 0)
+            if self._sustain_depth == 0:
+                self.clear_pbar(strict=False)
 
     def get_context(self) -> dict[str, Any]:
         from .executor import _get_local

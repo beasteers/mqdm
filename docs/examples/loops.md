@@ -56,10 +56,10 @@ Take this up with `rich` or use logging.
 
 ## Logging
 ```python
---8<-- "snippets/output/logging.py"
+--8<-- "snippets/output/log.py"
 ```
 
-<div id="cast-output-logging" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/output/logging.cast"></div>
+<div id="cast-output-logging" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/output/log.cast"></div>
 
 ## Hide tiny inner loops
 

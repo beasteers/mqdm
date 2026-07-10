@@ -48,7 +48,7 @@ If worker output is captured and replayed later, or if each worker tries to own
 its own terminal rendering, you may still get progress updates, but not one
 clean shared live display.
 
-## Worker task
+## Example worker function (`example_fn`)
 
 ```python
 import time

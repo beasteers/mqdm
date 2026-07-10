@@ -65,8 +65,10 @@ def test_ipool_single_item_respects_on_error_skip():
 
 @pytest.mark.parametrize('pool_mode', ['sequential', 'thread'])
 def test_ipool_on_error_finish_aggregates_local_exceptions(pool_mode):
-    with pytest.raises(ValueError, match="observed in 1 remote function calls"):
+    with pytest.raises(M.PoolError, match="ValueError in 1 task") as ei:
         list(M.ipool(_boom, [1], pool_mode=pool_mode, n_workers=2, on_error='finish'))
+    assert ei.value.count == 1
+    assert type(ei.value.results[0].error) is ValueError
 
 
 @pytest.mark.parametrize('pool_mode', ['sequential', 'thread'])
@@ -77,11 +79,61 @@ def test_ipool_on_error_finish_raises_after_yielding_successes(pool_mode):
         return x * 2
 
     results = []
-    with pytest.raises(ValueError, match="observed in 1 remote function calls"):
+    with pytest.raises(M.PoolError, match="ValueError in 1 task"):
         for value in M.ipool(work, [0, 1], pool_mode=pool_mode, n_workers=2, ordered_=True, on_error='finish'):
             results.append(value)
 
     assert results == [0]
+
+
+@pytest.mark.parametrize('pool_mode', ['sequential', 'thread'])
+def test_ipool_on_error_finish_dedupes_across_messages(pool_mode):
+    # Same exception type raised at the same line with *different* messages
+    # should collapse into a single group (message-independent dedup).
+    def work(x):
+        raise KeyError(f"key_{x}")
+
+    with pytest.raises(M.PoolError) as ei:
+        list(M.ipool(work, [1, 2, 3], pool_mode=pool_mode, n_workers=2, on_error='finish'))
+
+    err = ei.value
+    assert err.count == 3                                 # all 3 failures kept
+    assert {type(r.error) for r in err.results} == {KeyError}
+    assert str(err).count(" Seen in ") == 1              # collapsed to one group
+    assert "Seen in 3 call(s)" in str(err)
+
+
+@pytest.mark.parametrize('pool_mode', ['sequential', 'thread'])
+def test_ipool_on_error_finish_groups_distinct_exceptions(pool_mode):
+    def work(x):
+        if x % 2 == 0:
+            raise ValueError("even")
+        raise KeyError("odd")
+
+    with pytest.raises(M.PoolError, match="2 distinct exceptions across 4 task") as ei:
+        list(M.ipool(work, [0, 1, 2, 3], pool_mode=pool_mode, n_workers=2, on_error='finish'))
+    assert {type(r.error) for r in ei.value.results} == {ValueError, KeyError}
+    assert ei.value.count == 4
+
+
+@pytest.mark.parametrize('pool_mode', ['sequential', 'thread'])
+def test_ipool_as_result_suppresses_raising(pool_mode):
+    # Option A: as_result_ hands back a Result per task and never raises,
+    # regardless of on_error.
+    def work(x):
+        if x == 1:
+            raise ValueError("boom")
+        return x * 10
+
+    for oe in ('cancel', 'finish', 'skip'):
+        results = list(M.ipool(
+            work, [0, 1, 2], pool_mode=pool_mode, n_workers=2,
+            ordered_=True, as_result_=True, on_error=oe,
+        ))
+        assert [r.ok for r in results] == [True, False, True]
+        assert [r.index for r in results] == [0, 1, 2]
+        assert results[0].value == 0 and results[2].value == 20
+        assert type(results[1].error) is ValueError
 
 
 def test_ipool_threaded_generator_streams_without_eager_submission():

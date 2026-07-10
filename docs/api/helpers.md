@@ -18,7 +18,7 @@ loop and pool calls rather than replacing them.
       show_root_heading: true
       show_source: false
 
-::: mqdm.group
+::: mqdm.sustain
     options:
       show_root_heading: true
       show_source: false

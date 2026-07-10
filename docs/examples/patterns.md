@@ -13,16 +13,24 @@ These are useful, but they are not the first things most people need.
 This is a nice way to avoid visual noise when the inner work is too small to be
 worth drawing every time.
 
-## Keep completed bars visible inside a group
+## Keep a batch of bars on screen with `sustain()`
 
 ```python
---8<-- "snippets/patterns/group.py"
+--8<-- "snippets/patterns/sustain.py"
 ```
 
-<div id="cast-patterns-group" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/patterns/group.cast"></div>
+<div id="cast-patterns-sustain" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/patterns/sustain.cast"></div>
 
-`group()` is handy when you want a small family of bars to stay visible until
-the whole grouped operation finishes.
+By default each bar owns the live display only for its own lifetime: when it
+finishes it's committed to the terminal and the next bar opens a fresh display
+below it, so you watch them one at a time. Wrap a batch in `sustain()` and a
+single display spans the whole block — the bars stack and stay visible together
+as a growing panel, with your `print()` and log output streaming above them.
+
+Reach for it when the bars belong together and seeing them as a set matters (a
+handful of related steps, or bars that finish out of order and you want held in
+one place). For a long, purely sequential run, the default one-at-a-time
+behavior is often what you want.
 
 ## Pause for interaction
 

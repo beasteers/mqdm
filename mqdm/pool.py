@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import traceback
 from collections.abc import Iterator
 from concurrent.futures import Executor, Future, as_completed
@@ -12,14 +13,37 @@ import mqdm as M
 
 from . import Runtime, utils
 from .bar import mqdm
-from .executor import T_POOL_MODE, _RemoteTraceback
+from .executor import T_POOL_MODE
 
 T = TypeVar('T')
 R = TypeVar('R')
 
 DescFunc: TypeAlias = Callable[[utils.args, int], str]
-ExceptionKey: TypeAlias = tuple[type[BaseException], str, str]
-RemoteExceptionMap: TypeAlias = dict[ExceptionKey, list[str]]
+# Failures are grouped for display by a message-independent signature: the
+# exception type plus its traceback frame locations. This means e.g.
+# ``KeyError('a')`` and ``KeyError('b')`` raised at the same line collapse into
+# one group.
+FailureKey: TypeAlias = tuple[type[BaseException], tuple[tuple[str, str], ...]]
+
+
+class PoolError(Exception):
+    """Aggregates the failures from a pool run (``on_error='finish'``).
+
+    A single distinct exception across many calls, or many distinct exceptions,
+    all surface as one ``PoolError`` — there is no single "right" class to
+    re-raise when tasks fail in different ways. The rendered message groups
+    identical failures and lists the calls that produced them; ``results`` holds
+    the failed :class:`Result` records (each with its ``index``, ``arg`` and the
+    original ``error``) for programmatic inspection.
+    """
+    def __init__(self, detail: str, results: list[Result]) -> None:
+        super().__init__(detail)
+        self.results = results
+
+    @property
+    def count(self) -> int:
+        """Total number of failed calls."""
+        return len(self.results)
 
 
 @dataclass
@@ -118,9 +142,13 @@ def ipool(
             ``"sequential"``.
         ordered_: Whether results should be yielded in input order.
         squeeze_: Whether to reduce worker count for very small inputs.
-        on_error: Error policy. ``"cancel"`` raises immediately, ``"skip"``
-            logs and continues, and ``"finish"`` aggregates failures and raises
-            after submitted work completes.
+        as_result_: Yield a :class:`Result` per task (ok or error) instead of
+            bare return values, and never raise on task failure — the caller
+            inspects ``.ok``/``.error``. This takes precedence over ``on_error``.
+        on_error: Error policy when ``as_result_`` is false. ``"cancel"`` raises
+            the first failure immediately, ``"skip"`` logs each and continues,
+            and ``"finish"`` runs everything then raises a :class:`PoolError`
+            aggregating all failures.
         on_interrupt: How to stop process-pool workers on ``KeyboardInterrupt``:
             ``"terminate"`` (SIGTERM) lets workers catch it and clean up,
             ``"kill"`` (SIGKILL) is uncatchable but guaranteed.
@@ -130,7 +158,10 @@ def ipool(
         **kw: Extra keyword arguments forwarded to ``fn`` for every item.
 
     Yields:
-        Results from ``fn``.
+        Return values from ``fn`` (or :class:`Result` records if ``as_result_``).
+
+    Raises:
+        PoolError: If ``on_error='finish'`` and any task failed.
     """
     plan = _make_pool_plan(
         fn=fn,
@@ -148,21 +179,23 @@ def ipool(
         runtime=runtime or M._current_runtime(),
     )
 
-    remote_exceptions: RemoteExceptionMap = {}
+    failed_results: list[Result] = []
 
     def _emit(outcome: _TaskOutcome) -> Iterator[Any]:
-        # Decide what (if anything) an outcome yields. `as_result_` yields a
-        # Result record (identity + value/error); otherwise the bare value.
+        # Decide what (if anything) an outcome yields. `as_result_` takes over
+        # error handling entirely: every task comes back as a Result (ok or
+        # error) and nothing is raised or logged — the caller inspects `.error`.
+        if as_result_:
+            yield _make_result(outcome)
+            return
         if outcome.succeeded:
-            yield _make_result(outcome) if as_result_ else outcome.value
+            yield outcome.value
             return
         if plan.on_error == 'skip':
-            _add_func_args_str_to_exception(outcome.error, plan.fn, outcome.task.display_arg)
-            plan.runtime.print(''.join(traceback.format_exception(type(outcome.error), outcome.error, outcome.error.__traceback__)))
-            if as_result_:  # surface skipped failures inline instead of dropping them
-                yield _make_result(outcome)
+            call = _call_repr(plan.fn, outcome.task.index, outcome.task.display_arg)
+            plan.runtime.print(f"{_traceback_text(outcome.error)}\n\nRaised by {call}")
             return
-        _append_remote_exception(remote_exceptions, outcome.error, plan.fn, outcome.task.display_arg)
+        failed_results.append(_make_result(outcome))  # on_error='finish': aggregate
 
     try:
         with mqdm(
@@ -197,8 +230,8 @@ def ipool(
                         outcome = _task_outcome(task)
                         pbar.update(arg=outcome.task.display_arg, i=outcome.task.index)
 
-                        if not outcome.succeeded and plan.on_error == 'cancel':
-                            _add_func_args_str_to_exception(outcome.error, plan.fn, outcome.task.display_arg)
+                        if not as_result_ and not outcome.succeeded and plan.on_error == 'cancel':
+                            _annotate_exception(outcome.error, plan.fn, outcome.task.index, outcome.task.display_arg)
                             _cancel_pending(list(in_flight.values()), executor)
                             shutdown_wait = False
                             shutdown_cancel_futures = True
@@ -228,8 +261,8 @@ def ipool(
         plan.runtime.pause()
         raise
 
-    if remote_exceptions:
-        raise _combine_remote_exceptions(remote_exceptions)
+    if failed_results:
+        raise _build_pool_error(plan.fn, failed_results)
 
 
 @wraps(ipool, ['__doc__'])
@@ -430,46 +463,70 @@ def _shutdown_for_interrupt(
 # ---------------------------- Exception Handling ---------------------------- #
 
 
-def _add_func_args_str_to_exception(e: BaseException, fn: Callable[..., Any], arg: utils.args) -> BaseException:
-    """Add the function name and arguments to the exception."""
-    cause = getattr(e, '__cause__', None)
-    if cause is not None and getattr(cause, 'tb', None) is not None:
-        cause.tb = f"{cause.tb}\n\nError Thrown in Remote Function: {fn.__name__}{arg}"
-    return e
+_FRAME_RE = re.compile(r'^\s*File "(?P<file>.+)", line (?P<line>\d+)', re.MULTILINE)
 
 
-def _append_remote_exception(excs: RemoteExceptionMap, e: BaseException, fn: Callable[..., Any], arg: utils.args) -> RemoteExceptionMap:
+def _call_repr(fn: Callable[..., Any], index: int, arg: utils.args) -> str:
+    """Human-readable ``[i] fn(args)`` for a failed call (robust to partials etc.)."""
+    return f"task {index}: {arg}"
+
+
+def _traceback_text(e: BaseException) -> str:
+    """The formatted traceback for a task failure.
+
+    Process-pool exceptions carry the remote traceback as a preformatted string
+    on ``__cause__`` (CPython's private ``_RemoteTraceback.tb``); this is the one
+    place we read it. Thread/sequential failures keep a real traceback, which we
+    format the same way, so callers get a consistent string in every pool mode.
+    """
     tb = getattr(getattr(e, '__cause__', None), 'tb', None)
-    if not isinstance(tb, str):
-        tb = ''.join(traceback.format_exception(type(e), e, e.__traceback__)).rstrip()
-    k = (e.__class__, str(e), tb)
-    if k not in excs:
-        excs[k] = []
-    excs[k].append(f"{fn.__name__}{arg}")
-    return excs
+    if isinstance(tb, str):
+        return tb.strip()
+    return ''.join(traceback.format_exception(type(e), e, e.__traceback__)).rstrip()
 
 
-def _combine_remote_exceptions(excs: RemoteExceptionMap, n_fn_limit: int = 10, n_tb_limit: int = 10) -> BaseException:
-    """Merge the exception arguments into a single string."""
-    merged: list[str] = []
-    n_fns = sum(len(args) for args in excs.values())
-    for (t, st, tb), args in sorted(excs.items(), key=lambda x: len(x[1]), reverse=True)[:n_tb_limit]:
-        arg_str = '\n'.join(args[:n_fn_limit])
-        merged.append(f"{tb}\n Seen in {len(args)} Remote Function(s): \n{arg_str}")
-        if len(args) > n_fn_limit:
-            merged.append(f"... and {len(args) - n_fn_limit} more.")
+def _failure_key(e: BaseException, tb_text: str) -> FailureKey:
+    """A message-independent grouping key: exception type + frame locations."""
+    frames = tuple(_FRAME_RE.findall(tb_text))
+    return (type(e), frames)
 
-    if len(excs) > n_tb_limit:
-        merged.append(f"... and {len(excs) - n_tb_limit} more exceptions.")
 
-    if len(excs) == 1:
-        (t, st, tb), args = next(iter(excs.items()))
-        msg = f"{st} -- observed in {n_fns} remote function calls."
-        cls = t
-    else:
-        msg = f"{len(excs)} distinct exceptions observed in {n_fns} remote function calls."
-        cls = RuntimeError
+def _annotate_exception(e: BaseException, fn: Callable[..., Any], index: int, arg: utils.args) -> BaseException:
+    """Note which call raised ``e`` (used before re-raising on ``on_error='cancel'``).
 
-    e = cls(msg)
-    e.__cause__ = _RemoteTraceback("\n".join(merged))
+    Uses ``BaseException.add_note`` (3.11+) so the original exception type and
+    traceback are preserved untouched; on older Pythons this is a no-op (the
+    remote traceback still identifies the failure).
+    """
+    add_note = getattr(e, 'add_note', None)
+    if add_note is not None:
+        add_note(f"mqdm: raised by {_call_repr(fn, index, arg)}")
     return e
+
+
+def _build_pool_error(fn: Callable[..., Any], results: list[Result], n_call_limit: int = 10, n_group_limit: int = 10) -> PoolError:
+    """Render the failed results into a single ``PoolError``.
+
+    Grouping (by exception type + traceback frames) happens here, once, purely
+    for the rendered message — ``results`` stays a flat list of every failure.
+    """
+    groups: dict[FailureKey, list[Result]] = {}
+    for r in results:
+        groups.setdefault(_failure_key(r.error, _traceback_text(r.error)), []).append(r)
+    ordered = sorted(groups.values(), key=len, reverse=True)
+
+    blocks: list[str] = []
+    for group in ordered[:n_group_limit]:
+        calls = '\n'.join(_call_repr(fn, r.index, r.arg) for r in group[:n_call_limit])
+        if len(group) > n_call_limit:
+            calls += f"\n... and {len(group) - n_call_limit} more call(s)."
+        blocks.append(f"{_traceback_text(group[0].error)}\n Seen in {len(group)} call(s):\n{calls}")
+    if len(ordered) > n_group_limit:
+        blocks.append(f"... and {len(ordered) - n_group_limit} more distinct exception(s).")
+
+    if len(ordered) == 1:
+        summary = f"{type(ordered[0][0].error).__name__} in {len(results)} task(s)."
+    else:
+        summary = f"{len(ordered)} distinct exceptions across {len(results)} task(s)."
+    detail = summary + "\n\n" + "\n\n".join(blocks)
+    return PoolError(detail, results)

@@ -19,7 +19,7 @@ def example_prompt():
             M.inp("Do you want to continue?")
 
 
-def example_group():
+def example_sustain():
     t0 = time.time()
     for i in range(5):
         for j in mqdm(range(100), desc=f'blah {i}'):
@@ -28,7 +28,7 @@ def example_group():
     print(f"done in {time.time() - t0:.2f} seconds")
 
     t0 = time.time()
-    with M.group():
+    with M.sustain():
         for i in range(5):
             for j in mqdm(range(100), desc=f'blah {i}'):
                 time.sleep(0.005)
@@ -69,7 +69,7 @@ def example_fn(n, error=False, sleep=1):
         time.sleep(t)
         print(i, "slept for", t)
         # mqdm_.set_description("sleeping for %.2f" % t)
-        if error: 1/0
+        if error: raise ValueError(f"example {time.time()}")
     print("Done", n)
 
 def example_pool(n=5, transient=False, n_workers=5, **kw):

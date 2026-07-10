@@ -114,7 +114,9 @@ def record(snippet: Path) -> Path:
     os.close(master_fd)
     proc.wait()
     if proc.returncode != 0:
-        raise SystemExit(f"recording failed for {snippet} with exit code {proc.returncode}")
+        print(f"❌ {snippet.relative_to(ROOT)} failed with exit code {proc.returncode}")
+        return
+        # raise SystemExit(f"recording failed for {snippet} with exit code {proc.returncode}")
 
     header = {
         "version": 2,
@@ -127,7 +129,7 @@ def record(snippet: Path) -> Path:
         f.write(json.dumps(header) + "\n")
         for event in events:
             f.write(json.dumps(event, ensure_ascii=False) + "\n")
-    print(f"recorded {snippet.relative_to(ROOT)} -> {cast_path.relative_to(ROOT)}")
+    print(f"✅ {cast_path.relative_to(ROOT)}")
     return cast_path
 
 

@@ -5,6 +5,8 @@ from collections.abc import Callable, Iterable, Iterator
 from time import monotonic
 from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar, TypedDict
 
+from multiprocessing.managers import RemoteError
+
 from .runtime import Runtime, DEFAULT_REFRESH_PER_SECOND
 from . import utils
 from .executor import _get_local
@@ -13,6 +15,11 @@ import mqdm as M
 if TYPE_CHECKING:
     from .executor import T_POOL_MODE
     from .backend import ProgressBackend
+
+# Raised when the shared progress manager/proxy is already gone — e.g. a worker
+# finalizing its bars as the pool shuts down after an error. Updates to it are
+# best-effort at that point, so these are swallowed during teardown.
+_BACKEND_GONE = (RemoteError, EOFError, OSError)
 
 
 T = TypeVar('T')
@@ -366,17 +373,23 @@ class mqdm(Generic[T]):
         self.set(total=self._total)
         self._reset_fast_advance()
 
-    def _detach(self, remove: bool | None=None, soft: bool=False) -> None:
+    def _detach(self, remove: bool | None=None) -> None:
         """Detach from the live task while preserving local task state."""
         pbar = self.runtime.pbar
         if self.disable or pbar is None: return
 
-        if self.fast_advance is not None:
-            self.fast_advance(n=0, flush=True, wait=False)
-        if self._task_dict is None:
-            self._task_dict = pbar.pop_task(self.task_id, remove=remove)
-        self.runtime.remove_instance(self)
-        self.runtime.clear_pbar(strict=False, soft=soft)
+        try:
+            if self.fast_advance is not None:
+                self.fast_advance(n=0, flush=True, wait=False)
+            if self._task_dict is None:
+                self._task_dict = pbar.pop_task(self.task_id, remove=remove)
+            self.runtime.remove_instance(self)
+            self.runtime.clear_pbar(strict=False)
+        except _BACKEND_GONE:
+            # Shared manager/proxy already torn down (e.g. worker shutdown after
+            # a pool error). Detaching is best-effort, so drop it rather than
+            # spewing "Exception ignored in" during generator finalization.
+            self.runtime.remove_instance(self)
 
     def _set_task_dict(self, kw: dict[str, Any]) -> None:
         task = self._task_dict

@@ -2,9 +2,15 @@ import mqdm as M  # self
 from .runtime import Runtime, _current_runtime, _runtime, configure
 
 
-def group():
-    """Group progress bars."""
-    return _current_runtime().group()
+def sustain():
+    """Keep the live progress display alive across this block.
+
+    A sequence of separate bars normally renders one at a time — each freezes
+    into the scrollback as the next begins. Inside ``sustain()`` they stack and
+    stay visible together as one growing panel, with ``print``/logging streaming
+    above them. Nestable.
+    """
+    return _current_runtime().sustain()
 
 
 def print(*args, **kw):
@@ -64,7 +70,7 @@ from ._logging import MQDMHandler
 # ----------------------------------- Core ----------------------------------- #
 
 from .bar import mqdm
-from .pool import ipool, pool
+from .pool import ipool, pool, PoolError
 
 # ----------------------------- Development utils ---------------------------- #
 
@@ -75,5 +81,6 @@ __all__ = [
     'mqdm',
     'pool',
     'ipool',
+    'PoolError',
     'configure',
 ]
