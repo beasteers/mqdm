@@ -206,14 +206,12 @@ class Runtime:
             return self.get_manager().mqdm_Progress(*columns, **kw)
         return proxy.Progress(*columns, **kw)
 
-    def get_pbar(self, pool_mode: T_POOL_MODE = None, start: bool = False, **kw: Any) -> ProgressBackend:
+    def get_pbar(self, pool_mode: T_POOL_MODE = None, **kw: Any) -> ProgressBackend:
         pbar = self.pbar
         if pbar is None:
             pbar = self.pbar = self.new_pbar(pool_mode=pool_mode, **{**self._progress_kw, **kw})
         elif pool_mode == 'process' and not pbar.multiprocess:
             pbar = self.pbar = pbar.convert_proxy(runtime=self)
-        if start:
-            pbar.start()
         return pbar
 
     def clear_pbar(self, strict: bool = True, force: bool = False) -> None:

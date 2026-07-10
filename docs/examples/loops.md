@@ -60,11 +60,3 @@ Take this up with `rich` or use logging.
 ```
 
 <div id="cast-output-logging" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/output/log.cast"></div>
-
-## Hide tiny inner loops
-
-```python
---8<-- "snippets/patterns/hide_tiny_inner_loops.py"
-```
-
-<div id="cast-patterns-hide" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/patterns/hide_tiny_inner_loops.cast"></div>

@@ -72,8 +72,8 @@ def test_bar_close_flushes_buffered_fast_advance():
     bar = M.mqdm(total=5, runtime=runtime)
 
     try:
-        bar.fast_advance(n=1, flush=True)
-        bar.fast_advance(n=2)
+        bar._fast_advance(n=1, flush=True)
+        bar._fast_advance(n=2)
 
         assert runtime.pbar.dump_task(bar.task_id)["completed"] == 1
 
@@ -94,7 +94,7 @@ def test_bar_close_flush_does_not_wait_on_pause():
     bar = M.mqdm(total=5, runtime=runtime)
 
     try:
-        bar.fast_advance(n=2)
+        bar._fast_advance(n=2)
 
         def fail(*a, **kw):
             raise AssertionError("close flush should not wait on pause state")
@@ -141,7 +141,7 @@ def test_bar_detached_fast_advance_updates_snapshot_description():
         bar.set(description=lambda x, i: f"{x}:{i}")
         bar.close()
 
-        bar.fast_advance("alpha", n=2, flush=True, wait=False)
+        bar._fast_advance(n=2, arg="alpha", flush=True, wait=False)
 
         assert bar._task_dict["completed"] == 2
         assert bar._task_dict["description"] == "alpha:1"
@@ -161,11 +161,33 @@ def test_bar_live_fast_advance_updates_description():
 
     try:
         bar.set(description=lambda x, i: f"{x}:{i}")
-        bar.fast_advance("alpha", n=2, flush=True, wait=False)
+        bar._fast_advance(n=2, arg="alpha", flush=True, wait=False)
 
         restored = runtime.pbar.dump_task(bar.task_id)
         assert restored["completed"] == 2
         assert restored["description"] == "alpha:1"
+    finally:
+        bar.close()
+
+
+def test_public_advance_increments_and_resolves_dynamic_description():
+    # Exercises the public fast path: advance(n, arg) increments and, when an
+    # `arg` is given, refreshes a dynamic description via the same callback the
+    # iteration path uses. A long throttle means only forced flushes land, so
+    # the assertions depend on the flushed state, not on timing.
+    runtime = M.Runtime(refresh_per_second=0.1)
+    bar = M.mqdm(total=5, runtime=runtime)
+
+    try:
+        bar.set(description=lambda x, i: f"{x}:{i}")
+
+        assert bar.advance(2, arg="alpha") is bar  # returns self for chaining
+        bar.advance(1)                             # increment only, stays buffered
+
+        bar.close()  # flushes the buffered remainder
+
+        assert bar._task_dict["completed"] == 3
+        assert bar._task_dict["description"] == "alpha:1"
     finally:
         bar.close()
 

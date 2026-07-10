@@ -24,6 +24,17 @@ HEIGHT = 18
 CAST_OPTIONS = {
     # Path("home/why_mqdm.py"): {"hold_after_exit": 5.0},
     Path("home/main.py"): {"hold_after_exit": 1.0, "width": 80, "height": 16},
+    # `input` drives an interactive snippet: each step waits for `trigger`
+    # (a substring of recent output, or a delay in seconds) then types `text`
+    # into the process. A per-step timeout guarantees the recording never hangs.
+    Path("patterns/pause.py"): {
+        "input": [
+            ("In [", "i\n"),           # inspect the live loop variable
+            ("In [", "data[i]\n"),     # …and the data collected so far
+            ("In [", "exit\n"),        # leave the shell -> bars resume
+        ],
+        "hold_after_exit": 2.0,
+    },
 }
 
 
@@ -81,6 +92,31 @@ def record(snippet: Path) -> Path:
     )
     os.close(slave_fd)
 
+    # Normalize scripted input steps to (trigger, text, timeout).
+    input_steps = [
+        (step[0], step[1], step[2] if len(step) > 2 else 15.0)
+        for step in options.get("input", [])
+    ]
+    step_i = 0
+    step_started = time.monotonic()
+    acc = ""  # recent output, used to match substring triggers
+
+    def drive_input() -> None:
+        nonlocal step_i, step_started, acc
+        while step_i < len(input_steps):
+            trigger, text, timeout = input_steps[step_i]
+            now = time.monotonic()
+            if isinstance(trigger, (int, float)):
+                fire = (now - step_started) >= trigger
+            else:
+                fire = trigger in acc or (now - step_started) >= timeout
+            if not fire:
+                break
+            os.write(master_fd, text.encode())
+            step_i += 1
+            step_started = now
+            acc = ""
+
     events: list[list[object]] = []
     started = time.monotonic()
     while True:
@@ -95,8 +131,10 @@ def record(snippet: Path) -> Path:
                 text = decoder.decode(chunk)
                 if text:
                     events.append([dt, "o", text])
+                    acc = (acc + text)[-4096:]
             elif proc.poll() is not None:
                 break
+        drive_input()
         if proc.poll() is not None and not ready:
             break
 

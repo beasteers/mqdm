@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from collections.abc import Callable, Iterable, Iterator
 from time import monotonic
@@ -13,7 +14,6 @@ from .executor import _get_local
 import mqdm as M
 
 if TYPE_CHECKING:
-    from .executor import T_POOL_MODE
     from .backend import ProgressBackend
 
 # Raised when the shared progress manager/proxy is already gone — e.g. a worker
@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 # best-effort at that point, so these are swallowed during teardown.
 _BACKEND_GONE = (RemoteError, EOFError, OSError)
 
+# Globally disable mqdm using environment variable. 
+DISABLED = (os.getenv("MQDM_DISABLED") or "").lower() in ("1", "true", "yes", "y")
 
 T = TypeVar('T')
 TaskId: TypeAlias = int
@@ -47,7 +49,6 @@ class mqdm(Generic[T]):
         it: Iterable to wrap. If an ``int`` is provided, it is treated as
             ``range(it)``.
         desc: Static description or per-item description callback.
-        pool_mode: Optional worker mode hint used when binding to pooled work.
         runtime: Runtime that should own this bar. Defaults to the current
             runtime.
         disable: Whether rendering should be disabled while counters continue to
@@ -68,7 +69,7 @@ class mqdm(Generic[T]):
     _desc: str | None = None          # the description of the progress bar
 
     # lifecycle state
-    disable: bool = False             # whether to disable the progress bar
+    disable: bool = DISABLED          # whether to disable the progress bar
     entered: bool = False             # whether the progress bar has called __enter__()
     started: bool = False             # whether the progress bar has beed started (for lazy start)
     
@@ -78,7 +79,7 @@ class mqdm(Generic[T]):
 
     # methods
     get_desc: DescFunc[T] | None = None  # a function to get the description
-    fast_advance: Callable[..., None] | None = None  # a function to update the progress bar in fast loops
+    _fast_advance: Callable[..., None] | None = None  # a function to update the progress bar in fast loops
     runtime: Runtime                  # runtime that owns this bar's state
 
     def __init__(
@@ -88,7 +89,6 @@ class mqdm(Generic[T]):
             *, 
 
             # mqdm arguments
-            pool_mode: T_POOL_MODE=None,
             disable: bool | None=None,
             runtime: Runtime | None=None,
             task_id: TaskId | TaskState | None=None,
@@ -114,7 +114,6 @@ class mqdm(Generic[T]):
         )
 
         bind_kw = self._init_task(
-            pool_mode=pool_mode,
             task_id=task_id,
             start=start,
             task_kw={
@@ -140,7 +139,6 @@ class mqdm(Generic[T]):
 
     def _init_task(
             self, *,
-            pool_mode,
             task_id: TaskId | TaskState | None,
             task_kw: dict[str, Any] | None,
             start: bool,
@@ -155,7 +153,7 @@ class mqdm(Generic[T]):
             self._init_disabled(task_id, start)
             return bind_kw
 
-        pbar = self.runtime.get_pbar(pool_mode=pool_mode)
+        pbar = self.runtime.get_pbar()
         if start:
             pbar.start()
         self.runtime.add_instance(self)
@@ -218,7 +216,7 @@ class mqdm(Generic[T]):
     def __getstate__(self):
         state: dict[str, Any] = self.__dict__.copy()
         state['get_desc'] = None  # cannot pickle lambda functions
-        state['fast_advance'] = None  # cannot pickle closures
+        state['_fast_advance'] = None  # cannot pickle closures
         # state['_items'] = None  # cannot pickle iterators
         state['_iter'] = None  # cannot pickle iterators
         return state
@@ -275,13 +273,13 @@ class mqdm(Generic[T]):
         runtime = self.runtime
         task_id = self.task_id
 
-        def disabled_update(x: T | object=..., n: int=1, flush: bool=False, wait: bool=True) -> None:
+        def disabled_update(n: int=1, arg: T | object=..., flush: bool=False, wait: bool=True) -> None:
             D['_n'] += n
             return
 
         n_acc = 0
         t_last = 0
-        def update(x: T | object=..., n: int=1, flush: bool=False, wait: bool=True) -> None:
+        def update(n: int=1, arg: T | object=..., flush: bool=False, wait: bool=True) -> None:
             nonlocal n_acc
             n_acc += n
 
@@ -291,9 +289,9 @@ class mqdm(Generic[T]):
             #       - could happen with overwrite=False type scenarios)
             t = monotonic()
             if t - t_last >= delta or flush:
-                do_flush(t, x, wait)
+                do_flush(t, arg, wait)
 
-        def do_flush(t: float, x: T | object, wait: bool) -> None:
+        def do_flush(t: float, arg: T | object, wait: bool) -> None:
             nonlocal t_last, n_acc
             D['_n'] += n_acc
 
@@ -302,7 +300,7 @@ class mqdm(Generic[T]):
                 get_desc = self.get_desc
                 pbar.try_update(
                     task_id, advance=n_acc, 
-                    description=get_desc(x, D['_n']-1) if x is not ... and get_desc is not None else None
+                    description=get_desc(arg, D['_n']-1) if arg is not ... and get_desc is not None else None
                 )
                 if wait:
                     ttl_pause_wait()
@@ -311,8 +309,8 @@ class mqdm(Generic[T]):
                 if task is not None:
                     task['completed'] = D['_n']
                     get_desc = self.get_desc
-                    if x is not ... and get_desc is not None:
-                        task['description'] = get_desc(x, D['_n']-1)
+                    if arg is not ... and get_desc is not None:
+                        task['description'] = get_desc(arg, D['_n']-1)
 
             n_acc = 0
             t_last = t
@@ -321,10 +319,10 @@ class mqdm(Generic[T]):
         return disabled_update if disable else update
     
     def _reset_fast_advance(self) -> Callable[..., None]:
-        if self.fast_advance is not None:
-            self.fast_advance(n=0, flush=True, wait=False)
-        self.fast_advance = self._get_fast_advance()
-        return self.fast_advance
+        if self._fast_advance is not None:
+            self._fast_advance(n=0, flush=True, wait=False)
+        self._fast_advance = self._get_fast_advance()
+        return self._fast_advance
 
     def _get_iter(self, it: Iterable[T]) -> Iterator[T]:
         with utils.noopcontext() if self.entered else self:
@@ -332,8 +330,8 @@ class mqdm(Generic[T]):
             x: T | object = ...
             for x in it:
                 yield x
-                update(x, 1)
-            update(x, 0, flush=True)
+                update(1, x)
+            update(0, x, flush=True)
 
     def __call__(
         self,
@@ -379,8 +377,8 @@ class mqdm(Generic[T]):
         if self.disable or pbar is None: return
 
         try:
-            if self.fast_advance is not None:
-                self.fast_advance(n=0, flush=True, wait=False)
+            if self._fast_advance is not None:
+                self._fast_advance(n=0, flush=True, wait=False)
             if self._task_dict is None:
                 self._task_dict = pbar.pop_task(self.task_id, remove=remove)
             self.runtime.remove_instance(self)
@@ -457,7 +455,7 @@ class mqdm(Generic[T]):
         if kw.get("description") is not None:
             self._desc = kw["description"]
 
-        if reset_fast_advance and self.fast_advance is not None:
+        if reset_fast_advance and self._fast_advance is not None:
             self._reset_fast_advance()
 
         return kw
@@ -510,6 +508,11 @@ class mqdm(Generic[T]):
     def update(self, advance: int=1, **kw: Any) -> mqdm[T]:
         """Increment the progress bar."""
         return self.set(advance=advance, **kw)
+    
+    def advance(self, n: int=1, arg: Any=...) -> mqdm[T]:
+        """Advance the progress bar by a given number of steps."""
+        self._fast_advance(n, arg)
+        return self
 
     def set(self, **kw: Any) -> mqdm[T]:
         """Update progress bar fields."""

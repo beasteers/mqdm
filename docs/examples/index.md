@@ -9,13 +9,26 @@ Here are some common patterns for using `mqdm`:
 - [Other multiprocessing tools](other-pools.md): use `mqdm` bars with
   `concurrent.futures`, `multiprocessing.Pool`, and raw threads
 
-## A complete example
+## A typical use case
 
-A common situation I find myself in is processing a large amount of sensor data in parallel. 
+You have a large amount of sensor data stored in CSVs, partitioned by `{sensor_id}/{date}.csv` e.g.
 
-I have the data partitioned by `{sensor_id}/{date}.csv`
+```
+data/
+    sensor_1/
+        2026-01-01.csv
+        2026-02-01.csv
+        ...
+    sensor_2/
+        2026-01-01.csv
+        2026-02-01.csv
+        ...
+    .../
+```
 
-If you were to boil down the problem to its simplest form, it would look like this:
+You want to perform some processing or inference over the data, e.g. simulating a real-time pipeline.
+
+Essentially, all we want is this (except we want to parallelize the outer loop):
 
 ```python
 for sensor_id in mqdm.mqdm(sensor_ids):

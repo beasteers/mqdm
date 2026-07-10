@@ -121,10 +121,10 @@ class fopen:
         try:
             line = next(self.fd)
         except StopIteration:
-            self.pbar.fast_advance(n=0, flush=True, wait=False)
+            self.pbar._fast_advance(n=0, flush=True, wait=False)  # flush the accumulated count
             raise
         pos = self._tell()
-        self.pbar.fast_advance(n=pos - self._pos)
+        self.pbar.advance(pos - self._pos)
         self._pos = pos
         return line
 

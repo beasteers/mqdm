@@ -17,7 +17,7 @@ def main():
         list(range(24)),
         list(range(18)),
     ]
-    mqdm.pool(process_fn, batches, desc="Parallel", n_workers=5)
+    mqdm.pool(process_fn, batches, desc="Parallel threads", pool_mode="thread", n_workers=3)
 
 
 if __name__ == "__main__":

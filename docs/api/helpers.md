@@ -1,7 +1,6 @@
 # Utilities
 
-These are still part of the normal public surface, but they support the core
-loop and pool calls rather than replacing them.
+Public helpers around the core loop and pool calls.
 
 ::: mqdm.utils.args
     options:

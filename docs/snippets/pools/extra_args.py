@@ -5,7 +5,7 @@ import time
 def process_fn(xs, arg_a_for_process_fn=0, arg_b=0):
     desc = f"a={arg_a_for_process_fn} b={arg_b}"
     for _ in mqdm.mqdm(xs, desc=desc):
-        time.sleep(0.03)
+        time.sleep(0.1)
     return len(xs) + arg_a_for_process_fn + arg_b
 
 

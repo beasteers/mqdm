@@ -1,7 +1,6 @@
 # Core APIs
 
-These are the main public APIs. If you are using `mqdm` as a `tqdm`
-replacement, this covers most use-cases.
+The main public APIs — enough to use `mqdm` as a `tqdm` replacement.
 
 ::: mqdm.bar.mqdm
     options:

@@ -272,7 +272,7 @@ def test_disabled_mqdm_is_pickleable():
     assert restored.disable is True
     assert restored._desc == "hello"
     assert restored._iter is None
-    assert restored.fast_advance is None
+    assert restored._fast_advance is None
 
 
 def test_runtime_progress_options_are_runtime_scoped():

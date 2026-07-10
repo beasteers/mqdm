@@ -1,8 +1,7 @@
 # Runtime and Configuration
 
-Most code does not need to construct a runtime explicitly. This page covers the
-advanced surface for isolated progress state, logging behavior, and
-runtime-scoped progress configuration.
+Most code never constructs a `Runtime`. This is the advanced surface: isolated
+progress state, logging, and runtime-scoped configuration.
 
 ::: mqdm.runtime.configure
     options:

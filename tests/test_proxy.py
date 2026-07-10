@@ -110,7 +110,7 @@ def test_runtime_get_pbar_converts_with_owning_runtime(monkeypatch):
 
     monkeypatch.setattr(progress, "convert_proxy", fake_convert_proxy)
 
-    proxy = runtime.get_pbar(pool_mode="process", start=False)
+    proxy = runtime.get_pbar(pool_mode="process")
 
     assert isinstance(proxy, Proxy)
     assert runtime.pbar is proxy

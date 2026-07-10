@@ -17,10 +17,9 @@ Additionally, worker functions can have their own progress bars, which integrate
 
 <div id="cast-pools-simple-seq" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/pools/simple_sequential.cast"></div>
 
-This is useful because the exact same call shape can scale up to worker pools
-without changing how you think about the interface.
+By default, mqdm.pool runs with 0 workers. 
 
-## Simple parallel
+## Simple parallel processes
 
 ```python
 --8<-- "snippets/pools/simple_parallel.py"
@@ -28,11 +27,20 @@ without changing how you think about the interface.
 
 <div id="cast-pools-simple-par" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/pools/simple_parallel.cast"></div>
 
-That is the main jump: same basic call, now with multiple workers.
+To run tasks in parallel, provide the number of workers via the `n_workers` argument. The default pool_mode is `"process"`.
 
-## Simple parallel with additional arguments
+## Simple parallel threads
 
-Shared keyword arguments for every task can be passed directly to `mqdm.pool`.
+```python
+--8<-- "snippets/pools/simple_threads.py"
+```
+
+<div id="cast-pools-simple-threads" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/pools/simple_threads.cast"></div>
+
+To use a thread pool, just pass `pool_mode="thread"`.
+
+## Passing additional arguments
+
 
 ```python
 --8<-- "snippets/pools/extra_args.py"
@@ -40,12 +48,12 @@ Shared keyword arguments for every task can be passed directly to `mqdm.pool`.
 
 <div id="cast-pools-extra-args" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/pools/extra_args.cast"></div>
 
-That pattern is often enough. You do not need `mqdm.args(...)` unless the
-arguments differ item by item.
+Extra keyword arguments can be passed directly to `mqdm.pool`, which will
+pass them to each function call.
 
 ## Parallel with complex arguments
 
-Use `mqdm.args(...)` when each item needs its own positional or keyword values.
+Use `mqdm.args(...)` to bundle multiple arguments for the worker function.
 
 ```python
 --8<-- "snippets/pools/complex_args.py"
@@ -53,8 +61,11 @@ Use `mqdm.args(...)` when each item needs its own positional or keyword values.
 
 <div id="cast-pools-complex-args" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/pools/complex_args.cast"></div>
 
-This is similar in spirit to a small `joblib.delayed(...)` payload, but lighter.
-It is powerful, but it is not the first tool most code needs.
+Use `mqdm.args(...)` when each item needs its own positional or keyword values.
+This is similar in spirit to a `joblib.delayed()(*a, **kw)` payload. 
+
+Note - when an argument is shared across all items, it is more efficient to use 
+a regular keyword argument to `mqdm.pool`.
 
 ## `ipool` for streaming results
 
@@ -71,8 +82,7 @@ with a coordinated progress display built in.
 
 ## Worker bars
 
-One of the nicest parts of `mqdm.pool(...)` is that worker functions can use
-their own bars too.
+`mqdm` works seamlessly inside worker functions, allowing each task to have its own progress bar running in parallel.
 
 ```python
 --8<-- "snippets/pools/worker_bars.py"
@@ -81,11 +91,13 @@ their own bars too.
 <div id="cast-pools-worker-bars" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/pools/worker_bars.cast"></div>
 
 
-## `IPython`
+## Interactive sessions with `python` / `IPython`
 
 For interactive sessions, you have to switch multiprocessing to use the `fork` start method. This is because the default `spawn` method launches a worker process by calling the current script. But with interactive sessions, there is no script to call.
 
 ```python
+python <<< '
+
 # Call me!
 import multiprocessing as mp    
 mp.set_start_method("fork", force=True)
@@ -99,4 +111,6 @@ mqdm.pool(
     desc="Very important work",
     n_workers=4,
 )
+
+'
 ```
