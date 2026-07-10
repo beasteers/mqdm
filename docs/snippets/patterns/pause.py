@@ -2,15 +2,12 @@ import mqdm
 import time
 
 
-with mqdm.mqdm(desc="before pause", total=2) as bar:
+for i in mqdm.mqdm(range(20), desc="initial loop"):
     time.sleep(0.08)
-    bar.update()
-
-with mqdm.pause():
-    print("continue? yes")
-
-with mqdm.mqdm(desc="after pause", total=2) as bar:
-    time.sleep(0.08)
-    bar.update(2)
-
-time.sleep(0.2)
+    if i == 9:
+        print("Pausing at step 10...")
+        with mqdm.pause():
+            # Wait for user input before continuing
+            print("Something interesting is a foot!")
+            print("Some data", i)
+            input("Continue? (press Enter to continue)")

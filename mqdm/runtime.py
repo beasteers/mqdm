@@ -189,7 +189,7 @@ class Runtime:
 
         return (
             "[progress.description]{task.description}",
-            progress.BarColumn(bar_width=None),
+            progress_columns.TwoToneColumn(bar_width=None),
             "[progress.percentage]{task.percentage:>3.0f}%",
             progress_columns.MofNColumn(bytes=bytes),
             progress_columns.SpeedColumn(bytes=bytes),

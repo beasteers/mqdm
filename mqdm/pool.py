@@ -64,6 +64,7 @@ class _PoolPlan:
     discovered_total: int
     max_in_flight: int
     runtime: Runtime
+    submitted: int = 0
 
     @property
     def worker_bar_kw(self) -> dict[str, Any]:
@@ -373,9 +374,12 @@ def _submit_next(executor: Executor, plan: _PoolPlan, pbar: mqdm, indexed_iter: 
     call_arg = utils.args.from_item(item)
     call_arg.kw = {**plan.fn_kw, **call_arg.kw}
     future = executor.submit(_task_call, index, plan.fn, call_arg.a, call_arg.kw)
+    plan.submitted += 1
+    set_kw: dict[str, Any] = {'started': plan.submitted}  # in-flight + done, for the two-tone bar
     if plan.total < 0:
         plan.discovered_total += 1
-        pbar.set(total=plan.discovered_total)
+        set_kw['total'] = plan.discovered_total
+    pbar.set(**set_kw)
     return _Task(index=index, display_arg=display_arg, future=future)
 
 

@@ -1,6 +1,78 @@
 import time
 from rich import progress
+from rich.segment import Segment
+from rich.style import Style
+from rich.progress_bar import ProgressBar
 
+
+class TwoToneBar(ProgressBar):
+    """A progress bar with a lighter fill for work that's started but not done.
+
+    Renders three zones — completed, started-but-pending, and idle — so you can
+    see how far the workers have run ahead of what has actually finished. Reads
+    the pending count from ``started`` (defaults to ``completed``, i.e. a plain
+    bar) and clamps it to ``completed <= started <= total``.
+
+    The started zone defaults to a dimmed shade of the complete colour (same hue,
+    lower intensity). That reads as "same work, in progress" and — because dim is
+    an SGR attribute rather than a colour — stays distinct from the grey
+    background even on 16-colour terminals, where a lighter grey would collapse
+    into it. Pass ``started_style`` to override.
+    """
+    def __init__(self, *args, started: float = 0, started_style: str | None = None, **kw):
+        super().__init__(*args, **kw)
+        self.started = started
+        self.started_style = started_style
+
+    def _resolve_started_style(self, console) -> Style:
+        if self.started_style is not None:
+            return console.get_style(self.started_style)
+        return console.get_style(self.complete_style) + Style(dim=True)
+
+    def __rich_console__(self, console, options):
+        width = min(self.width or options.max_width, options.max_width)
+        # Defer to the stock bar for indeterminate / pulsing tasks.
+        if self.total is None or self.pulse:
+            yield from super().__rich_console__(console, options)
+            return
+
+        bar = "-" if (options.legacy_windows or options.ascii_only) else "━"
+        done = max(0.0, min(self.total, self.completed))
+        started = max(done, min(self.total, self.started))
+        done_cells = int(round(width * done / self.total)) if self.total else 0
+        started_cells = int(round(width * started / self.total)) if self.total else 0
+
+        finished = self.total and self.completed >= self.total
+        zones = (
+            (done_cells, console.get_style(self.finished_style if finished else self.complete_style)),
+            (started_cells - done_cells, self._resolve_started_style(console)),
+            (width - started_cells, console.get_style(self.style)),
+        )
+        for count, style in zones:
+            if count > 0:
+                yield Segment(bar * count, style)
+
+
+class TwoToneColumn(progress.BarColumn):
+    """``BarColumn`` that shades a task's ``started`` field as a second tone."""
+    def __init__(self, *args, started_style: str | None = None, **kw):
+        self.started_style = started_style
+        super().__init__(*args, **kw)
+
+    def render(self, task) -> ProgressBar:
+        return TwoToneBar(
+            total=max(0, task.total) if task.total is not None else None,
+            completed=max(0, task.completed),
+            started=max(0, task.fields.get("started", task.completed)),
+            width=None if self.bar_width is None else max(1, self.bar_width),
+            pulse=not task.started,
+            animation_time=task.get_time(),
+            style=self.style,
+            complete_style=self.complete_style,
+            finished_style=self.finished_style,
+            pulse_style=self.pulse_style,
+            started_style=self.started_style,
+        )
 
 
 class MofNColumn(progress.DownloadColumn):
