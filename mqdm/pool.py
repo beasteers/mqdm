@@ -4,6 +4,7 @@ import re
 import traceback
 from collections.abc import Iterator
 from concurrent.futures import Executor, Future, as_completed
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
 from time import monotonic
@@ -47,23 +48,29 @@ class PoolError(Exception):
 
 
 @dataclass
-class _PoolPlan:
+class _PoolPlanBase:
+    """Fields shared by sync :class:`_PoolPlan` and async :class:`_AsyncPoolPlan`."""
+
     fn: Callable[..., R]
-    iterable: Iterator[Any]
     desc: str | DescFunc
     bar_kw: dict[str, Any]
     n_workers: int
-    pool_mode: T_POOL_MODE
     ordered: bool
     squeeze: bool
     on_error: Literal['finish', 'cancel', 'skip']
-    on_interrupt: Literal['terminate', 'kill']
-    interrupt_grace: float
     fn_kw: dict[str, Any]
     total: int
     discovered_total: int
     max_in_flight: int
     runtime: Runtime
+
+
+@dataclass
+class _PoolPlan(_PoolPlanBase):
+    iterable: Iterator[Any]
+    pool_mode: T_POOL_MODE
+    on_interrupt: Literal['terminate', 'kill']
+    interrupt_grace: float
     submitted: int = 0
 
     @property
@@ -108,6 +115,52 @@ class Result:
 
 def _make_result(outcome: _TaskOutcome) -> Result:
     return Result(index=outcome.task.index, arg=outcome.task.display_arg, value=outcome.value, error=outcome.error)
+
+
+def _emit_outcome(
+    outcome: Any,
+    plan: _PoolPlanBase,
+    as_result_: bool,
+    failed_results: list[Result],
+) -> list[Any]:
+    """Process a task outcome and return values to yield.
+
+    Shared by ``ipool`` and ``aipool`` so the error-handling policies
+    (``as_result_``, ``skip``, ``finish``) live in one place.
+    """
+    if as_result_:
+        return [_make_result(outcome)]
+    if outcome.succeeded:
+        return [outcome.value]
+    if plan.on_error == 'skip':
+        call = _call_repr(plan.fn, outcome.task.index, outcome.task.display_arg)
+        plan.runtime.print(f"{_traceback_text(outcome.error)}\n\nRaised by {call}")
+        return []
+    failed_results.append(_make_result(outcome))
+    return []
+
+
+@contextmanager
+def _task_event_context(index: int):
+    """Wrap the body of a pool task with lifecycle event emission.
+
+    When the runtime has an ``on_event`` sink attached, this emits
+    ``task_started`` / ``task_finished`` / ``task_failed`` so callers
+    can observe individual task completions as they happen.
+    """
+    runtime = M._current_runtime()
+    emit = runtime.on_event is not None
+    with runtime.context(task_index=index):
+        if emit:
+            runtime.emit("task_started")
+        try:
+            yield
+        except BaseException as e:
+            if emit:
+                runtime.emit("task_failed", error=repr(e))
+            raise
+        if emit:
+            runtime.emit("task_finished")
 
 
 # ---------------------------------------------------------------------------- #
@@ -182,22 +235,6 @@ def ipool(
 
     failed_results: list[Result] = []
 
-    def _emit(outcome: _TaskOutcome) -> Iterator[Any]:
-        # Decide what (if anything) an outcome yields. `as_result_` takes over
-        # error handling entirely: every task comes back as a Result (ok or
-        # error) and nothing is raised or logged — the caller inspects `.error`.
-        if as_result_:
-            yield _make_result(outcome)
-            return
-        if outcome.succeeded:
-            yield outcome.value
-            return
-        if plan.on_error == 'skip':
-            call = _call_repr(plan.fn, outcome.task.index, outcome.task.display_arg)
-            plan.runtime.print(f"{_traceback_text(outcome.error)}\n\nRaised by {call}")
-            return
-        failed_results.append(_make_result(outcome))  # on_error='finish': aggregate
-
     try:
         # Put the runtime on the right backend before the top bar so process
         # workers forward updates to the parent-owned shared display.
@@ -242,10 +279,10 @@ def ipool(
                         if plan.ordered:
                             ready[task.index] = outcome
                             while next_index in ready:
-                                yield from _emit(ready.pop(next_index))
+                                yield from _emit_outcome(ready.pop(next_index), plan, as_result_, failed_results)
                                 next_index += 1
                         else:
-                            yield from _emit(outcome)
+                            yield from _emit_outcome(outcome, plan, as_result_, failed_results)
 
                         _fill()
                 except KeyboardInterrupt:
@@ -392,20 +429,8 @@ def _task_call(index, fn, args, kw):
     main process (which submitted them) and are correlated there, so large inputs
     are never re-serialized per event.
     """
-    runtime = M._current_runtime()
-    emit = runtime.on_event is not None
-    with runtime.context(task_index=index):
-        if emit:
-            runtime.emit("task_started")
-        try:
-            result = fn(*args, **kw)
-        except BaseException as e:
-            if emit:
-                runtime.emit("task_failed", error=repr(e))
-            raise
-        if emit:
-            runtime.emit("task_finished")
-        return result
+    with _task_event_context(index):
+        return fn(*args, **kw)
 
 
 def _task_outcome(task: _Task) -> _TaskOutcome:

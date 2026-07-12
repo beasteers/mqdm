@@ -14,10 +14,13 @@ from .pool import (
     DescFunc,
     PoolError,
     Result,
+    _PoolPlanBase,
     _annotate_exception,
     _build_pool_error,
     _call_repr,
+    _emit_outcome,
     _make_result,
+    _task_event_context,
     _traceback_text,
 )
 
@@ -27,20 +30,8 @@ OnError: TypeAlias = Literal["finish", "cancel", "skip"]
 
 
 @dataclass
-class _AsyncPoolPlan:
-    fn: Callable[..., R]
+class _AsyncPoolPlan(_PoolPlanBase):
     iterable: AsyncIterable[Any] | Iterable[Any]
-    desc: str | DescFunc
-    bar_kw: dict[str, Any]
-    n_workers: int
-    ordered: bool
-    squeeze: bool
-    on_error: OnError
-    fn_kw: dict[str, Any]
-    total: int
-    discovered_total: int
-    max_in_flight: int
-    runtime: Runtime
     submitted: int = 0
 
 
@@ -111,19 +102,6 @@ async def aipool(
     ready: dict[int, _AsyncTaskOutcome] = {}
     next_index = 0
 
-    async def _emit(outcome: _AsyncTaskOutcome) -> AsyncIterator[Any]:
-        if as_result_:
-            yield _make_result(outcome)
-            return
-        if outcome.succeeded:
-            yield outcome.value
-            return
-        if plan.on_error == "skip":
-            call = _call_repr(plan.fn, outcome.task.index, outcome.task.display_arg)
-            plan.runtime.print(f"{_traceback_text(outcome.error)}\n\nRaised by {call}")
-            return
-        failed_results.append(_make_result(outcome))
-
     async def _fill() -> None:
         while len(in_flight) < plan.max_in_flight:
             task = await _submit_next_async(indexed_iter, plan, pbar)
@@ -154,11 +132,11 @@ async def aipool(
                     if plan.ordered:
                         ready[current.index] = outcome
                         while next_index in ready:
-                            async for value in _emit(ready.pop(next_index)):
+                            for value in _emit_outcome(ready.pop(next_index), plan, as_result_, failed_results):
                                 yield value
                             next_index += 1
                     else:
-                        async for value in _emit(outcome):
+                        for value in _emit_outcome(outcome, plan, as_result_, failed_results):
                             yield value
 
                 await _fill()
@@ -273,20 +251,8 @@ async def _submit_next_async(
 
 
 async def _task_call_async(index: int, fn: Callable[..., R], args: tuple[Any, ...], kw: dict[str, Any]) -> R:
-    runtime = M._current_runtime()
-    emit = runtime.on_event is not None
-    with runtime.context(task_index=index):
-        if emit:
-            runtime.emit("task_started")
-        try:
-            result = await _run_async_callable(fn, *args, **kw)
-        except BaseException as e:
-            if emit:
-                runtime.emit("task_failed", error=repr(e))
-            raise
-        if emit:
-            runtime.emit("task_finished")
-        return result
+    with _task_event_context(index):
+        return await _run_async_callable(fn, *args, **kw)
 
 
 async def _run_async_callable(fn: Callable[..., R], *args: Any, **kw: Any) -> R:

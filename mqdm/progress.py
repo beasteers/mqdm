@@ -1,4 +1,3 @@
-import io
 from collections import deque
 import dataclasses
 from dataclasses import dataclass
@@ -10,6 +9,28 @@ import mqdm as M
 
 from .backend import RichTaskState, TaskState
 from .command_proxy import TransportProxy, proxymethod
+
+
+class _DiscardFile:
+    """A write-only file-like object that discards all data.
+
+    Used as the Rich console file when ``silent=True`` so the in-memory
+    buffer doesn't grow without bounds across refreshes.
+    """
+
+    encoding = "utf-8"
+
+    def write(self, s: str) -> int:
+        return len(s)
+
+    def flush(self) -> None:
+        pass
+
+    def getvalue(self) -> str:
+        return ""
+
+    def isatty(self) -> bool:
+        return False
 
 
 class Task(progress.Task):
@@ -75,7 +96,7 @@ class Progress(progress.Progress):
         self._init_options = dict(kw)
         if silent:
             self._init_options['silent'] = True
-            kw.setdefault('console', Console(file=io.StringIO(), force_terminal=True))
+            kw.setdefault('console', Console(file=_DiscardFile(), force_terminal=True))
         super().__init__(*columns, **kw)
 
         if _tasks is not None:
@@ -163,7 +184,7 @@ class Progress(progress.Progress):
         self,
         description: str='',
         start: bool = True,
-        total: float|None = 100.0,
+        total: float|None = None,
         completed: int = 0,
         visible: bool = True,
         **fields,
