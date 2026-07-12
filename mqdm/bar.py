@@ -248,6 +248,14 @@ class mqdm(Generic[T]):
             raise TypeError("mqdm object is not bound to an async iterable.")
         return _aiter
     
+    async def __anext__(self) -> T:
+        _aiter = self._aiter
+        if _aiter is None:
+            if self._iter is not None:
+                raise TypeError("mqdm object is bound to a sync iterable; use 'for'.")
+            raise TypeError("mqdm object is not bound to an async iterable.")
+        return await _aiter.__anext__()
+    
     # ----------------------------- Lifecycle methods ---------------------------- #
     
     def __enter__(self) -> mqdm[T]:
