@@ -21,3 +21,13 @@ Parallel processing APIs for `mqdm`.
     options:
       show_root_heading: true
       show_source: false
+
+::: mqdm.Result
+    options:
+      show_root_heading: true
+      show_source: false
+
+::: mqdm.PoolError
+    options:
+      show_root_heading: true
+      show_source: false

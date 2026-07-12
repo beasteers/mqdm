@@ -40,4 +40,3 @@ number of bytes processed.
 
 <div id="cast-output-open-bytes" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/output/open_bytes.cast"></div>
 
-For the API behind these patterns, see [Output and Control](../api/output.md).

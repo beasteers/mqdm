@@ -5,10 +5,9 @@
 
   const update = () => {
     const h = document.documentElement;
-    const pct = h.scrollHeight <= h.clientHeight
-      ? 1
-      : h.scrollTop / (h.scrollHeight - h.clientHeight);
-    el.style.transform = `scaleX(${pct})`;
+    const max = h.scrollHeight - h.clientHeight;
+    if (max <= 0) { el.style.transform = "scaleX(0)"; return; }
+    el.style.transform = `scaleX(${h.scrollTop / max})`;
   };
 
   window.addEventListener("scroll", update, {passive: true});
