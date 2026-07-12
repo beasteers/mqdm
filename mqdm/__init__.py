@@ -120,6 +120,10 @@ from .parallel.executor import T_POOL_MODE, get_executor, Initializer
 from .utils import args, fn, fopen, ratelimit
 from .utils._logging import MQDMHandler
 
+# --------------------------------- Columns ---------------------------------- #
+# Progress columns for customizing bar layout via ``backend_options["columns"]``.
+from .utils import columns
+
 # ---------------------------------- Events ---------------------------------- #
 
 from . import events

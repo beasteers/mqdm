@@ -40,3 +40,18 @@ number of bytes processed.
 
 <div id="cast-output-open-bytes" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/output/open_bytes.cast"></div>
 
+## Customizing columns
+
+The columns a bar renders are a runtime option — pass a `columns` tuple in
+`backend_options`. Use `mqdm.configure(columns=...)` to set it for the default
+runtime, or a separate `mqdm.Runtime(backend_options={"columns": ...})` to run
+different layouts side by side. Entries are Rich `ProgressColumn`s (or format
+strings); mqdm's own columns are in `mqdm.columns`, and you can write your own
+to render per-task fields.
+
+```python
+--8<-- "snippets/output/columns.py"
+```
+
+<div id="cast-output-columns" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/output/columns.cast"></div>
+

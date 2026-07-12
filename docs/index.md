@@ -2,23 +2,19 @@
 
 <div class="hero">
   <div class="hero-copy">
-    <h1>progress bars for threads, processes, and nested work</h1>
+    <h1>progress bars for parallel work</h1>
 
   </div>
   <div class="hero-art">
     <img src="assets/image.png" alt="mqdm progress bar illustration" />
   </div>
 </div>
-<p class="lede">
-  <code>mqdm</code> keeps the familiar <code>tqdm</code>-style loop shape,
-  but is built for code that also needs worker pools, nested progress, and
-  integrated terminal output.
-</p>
 
-<p class="lede">
-  In the spirit of tqdm (taqadum, تقدّم), mqdm stands for "mutaqaddim" (مُتَقَدِّم) which means "the one who progresses" referring to the parallel workers that are advancing the progress. 
-  The less ret-con-y name is "multiprocessing tqdm" :)
-</p>
+`mqdm` keeps the familiar `tqdm`-style loop shape while adding support for parallel workers and nested progress bars. 
+`mqdm` works seamlessly across processes allowing you to transparently track progress without worrying about the underlying parallelism.
+
+In the spirit of tqdm (taqadum, تقدّم), mqdm stands for "mutaqaddim" (مُتَقَدِّم) which means "the one who progresses" referring to the parallel workers that are advancing the progress. 
+The less ret-con-y name is "multiprocessing tqdm" :)
 
 <div id="cast-home-main" class="asciinema-player mqdm-cast" data-cast-src="assets/casts/home/main.cast" data-cols="80"></div>
 

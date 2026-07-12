@@ -76,6 +76,7 @@ nav:
       - mqdm: api/core.md
       - pool: api/pool.md
       - Helpers: api/helpers.md
+      - Columns: api/columns.md
       - Runtime and Configuration: api/runtime.md
 extra_css:
   - https://cdn.jsdelivr.net/npm/asciinema-player@3.8.0/dist/bundle/asciinema-player.css
