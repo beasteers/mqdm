@@ -1,34 +1,8 @@
-from contextlib import contextmanager
 from types import SimpleNamespace
 import sys
 
 import mqdm as M
 from mqdm import _dev
-
-
-def test_cm_wraps_context_manager_correctly():
-    calls = []
-
-    @contextmanager
-    def wrapper():
-        calls.append("enter")
-        try:
-            yield "value"
-        finally:
-            calls.append("exit")
-
-    def fn():
-        calls.append("call")
-        return 123
-
-    wrapped = _dev.cm(fn, wrapper)
-
-    with wrapped as value:
-        assert value == "value"
-        calls.append("body")
-
-    assert wrapped() == 123
-    assert calls == ["enter", "body", "exit", "enter", "call", "exit"]
 
 
 def test_timeit_supports_plain_and_factory_decorator(capsys):

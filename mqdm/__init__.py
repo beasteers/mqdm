@@ -81,8 +81,7 @@ from .apool import aipool, apool
 
 # ----------------------------- Development utils ---------------------------- #
 
-from ._dev import bp, embed, iex, inp, profile, timeit
-M.input = inp
+from ._dev import bp, embed, iex, profile, timeit
 
 __all__ = [
     'mqdm',

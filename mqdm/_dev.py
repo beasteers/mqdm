@@ -1,22 +1,20 @@
-from contextlib import contextmanager
-import sys
-import time
 import functools
-from types import TracebackType
+import time
+
 import rich
+from rich.console import Console
 from rich.prompt import Prompt
 from rich.console import Text
 
 import mqdm as M
 
 # ---------------------------------------------------------------------------- #
-#                                  Debug Tools                                 #
+#                               Drop-in Consoles                               #
 # ---------------------------------------------------------------------------- #
-
 
 def embed(*a, prompt='ipython?> ', exit_prompt=True):
     """Embed an IPython shell in the current environment. This will make sure the progress bars don't interfere.
-    
+
     This function is useful for debugging and interactive exploration.
 
     Does not work in subprocesses for obvious reasons.
@@ -31,24 +29,10 @@ def embed(*a, prompt='ipython?> ', exit_prompt=True):
     """
     with M.pause():
         from ._embed import embed
-        if not prompt or _Prompt.ask(Text(f'{prompt}', style="dim cyan")): 
+        if not prompt or _Prompt.ask(Text(f'{prompt}', style="dim cyan")):
             a and M.print(*a)
             embed(colors='neutral', stack_depth=1)
             exit_prompt and _Prompt.ask(Text('continue?> ', style="bold magenta"))
-
-
-class _Prompt(Prompt):
-    prompt_suffix = ''
-    def get_input(self, console, *a, **kw):
-        x = super().get_input(console, *a, **kw)
-        console.print('\033[F\033[A', end='')
-        return x
-
-
-def inp(prompt=''):
-    """Prompt for input in the terminal. This function is useful for debugging and interactive exploration."""
-    with M.pause():
-        return _Prompt.ask(Text(prompt or '', style="dim cyan"))
 
 
 def bp(*a, prompt='breakpoint?> '):
@@ -59,74 +43,67 @@ def bp(*a, prompt='breakpoint?> '):
             breakpoint()
 
 
-def pdb():
-    try:
-        import pdbr as pdb
-    except ImportError:
-        try:
-            import ipdb as pdb
-        except ImportError:
-            import pdb
-    return pdb
-
-
-def post_mortem(tb: TracebackType):
-    def _print_exc():
-        import fnmatch
-        rich.console.Console().print_exception(
-            suppress=[m for k, m in sys.modules.items() if any(
-                fnmatch.fnmatch(k, p) for p in ['fire', 'concurrent.futures', 'threading', 'multiprocessing'])]
-        )
-        cmds = 'h: help, u: up, d: down, l: code, v: vars, vt: varstree, w: stack, i {var}: inspect'
-        rich.print("\n[bold dim]Commands - [/bold dim] " + ", ".join(
-            "[bold green]{}[/bold green]:[dim]{}[/dim]".format(*c.split(':')) for c in cmds.split(', ')
-        ))
-
-    if tb is not None:
-        M.pause(True)
-        _print_exc()
-        pdb().post_mortem(tb)
-        M.pause(False)
-
-
 def iex(func):
-    """Decorator to embed an interactive post-mortem debugger on exception.
+    """Decorator to enter an interactive post-mortem debugger on exception.
 
-    Tries to use `pdbr` if installed; otherwise, prints a rich traceback and re-raises.
-    Does not work in subprocesses for obvious reasons.
+    Tries ``pdbr``, then ``ipdb``, then stdlib ``pdb``.  Catches
+    ``BaseException`` so Ctrl-C (``KeyboardInterrupt``) also drops into
+    the debugger at the interruption point.
     """
-    import functools
     @functools.wraps(func)
     def outer(*a, **kw):
-        _rich_traceback_omit = True
         try:
             return func(*a, **kw)
-        except BaseException as e:
-            post_mortem(getattr(e, '__traceback__', None))
+        except (Exception, KeyboardInterrupt) as e:
+            tb = e.__traceback__
+            if tb is not None:
+                M.pause(True)
+                _print_rich_traceback()
+                _get_debugger().post_mortem(tb)
+                M.pause(False)
     return outer
 
 
-class cm:
-    def __init__(self, func, wrapper):
-        self.func = func
-        self.wrapper = wrapper
-        self._manager = None
+class _Prompt(Prompt):
+    prompt_suffix = ''
+    def get_input(self, console, *a, **kw):
+        x = super().get_input(console, *a, **kw)
+        console.print('\033[F\033[A', end='')
+        return x
 
-    def _new_manager(self):
-        manager = self.wrapper()
-        if hasattr(manager, '__enter__') and hasattr(manager, '__exit__'):
-            return manager
-        return contextmanager(self.wrapper)()
 
-    def __enter__(self):
-        self._manager = self._new_manager()
-        return self._manager.__enter__()
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        return self._manager.__exit__(exc_type, exc_val, exc_tb)
-    def __call__(self, *a, **kw):
-        with self._new_manager():
-            return self.func(*a, **kw)
+def _get_debugger():
+    try:
+        import pdbr as pdb_mod
+    except ImportError:
+        try:
+            import ipdb as pdb_mod
+        except ImportError:
+            import pdb as pdb_mod
+    return pdb_mod
 
+
+_FRAMEWORK_MODULES = ('fire', 'concurrent.futures', 'threading', 'multiprocessing')
+
+
+def _print_rich_traceback():
+    import fnmatch
+    import sys
+    Console().print_exception(
+        suppress=[
+            m for k, m in sys.modules.items()
+            if any(fnmatch.fnmatch(k, p) for p in _FRAMEWORK_MODULES)
+        ]
+    )
+    cmds = 'h: help, u: up, d: down, l: code, v: vars, vt: varstree, w: stack, i {var}: inspect'
+    rich.print("\n[bold dim]Commands - [/bold dim] " + ", ".join(
+        "[bold green]{}[/bold green]:[dim]{}[/dim]".format(*c.split(':')) for c in cmds.split(', ')
+    ))
+
+
+# ---------------------------------------------------------------------------- #
+#                                   Profiling                                  #
+# ---------------------------------------------------------------------------- #
 
 
 def profile(func=None, **pkw):
