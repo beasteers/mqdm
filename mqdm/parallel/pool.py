@@ -217,6 +217,9 @@ def ipool(
 
     Raises:
         PoolError: If ``on_error='finish'`` and any task failed.
+
+    See also:
+        :func:`aipool` / :func:`apool` for the asyncio equivalents.
     """
     plan = _make_pool_plan(
         fn=fn,

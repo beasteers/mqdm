@@ -96,7 +96,12 @@ class Runtime:
         create_backend: Callable[..., ProgressBackend] | None = None,
         backend_options: dict[str, Any] | None = None,
     ) -> Runtime:
-        """Configure runtime-scoped options before the first bar."""
+        """Set display options for this runtime, before its first bar.
+
+        ``backend_options`` are forwarded to the progress backend (Rich by default,
+        e.g. ``refresh_per_second``, ``expand``, ``redirect_stdout``); ``create_backend``
+        swaps the backend factory entirely. Raises if the shared display already exists.
+        """
         if backend_options is None and create_backend is None:
             return self
         if self.pbar is not None:
@@ -293,6 +298,20 @@ class Runtime:
 
     @contextmanager
     def context(self, **context: Any):
+        """Attach key/values to every event emitted inside this block.
+
+        Emitted events (``print``, ``log``, task lifecycle) carry a ``context`` dict;
+        this pushes extra fields onto it for the duration of the ``with`` block and
+        pops them on exit. Useful for tagging output with a phase, request id, or
+        similar so an ``on_event`` sink can group it. Nestable; see
+        :meth:`set_base_context` for long-lived values like worker identity.
+
+        Example:
+            ```python
+            with runtime.context(phase="index"):
+                mqdm.print("scanning")   # event context includes phase="index"
+            ```
+        """
         from .parallel.executor import _clear_local
 
         contexts = self._get_context_store()
@@ -467,7 +486,21 @@ def _current_runtime() -> Runtime:
 
 
 def configure(**kw: Any) -> Runtime:
-    """Configure the implicit global runtime before its first progress bar."""
+    """Set display options on the implicit global runtime, before its first bar.
+
+    Keywords are forwarded to the progress backend (Rich by default), e.g.
+    ``refresh_per_second``, ``expand``, ``redirect_stdout`` / ``redirect_stderr``,
+    ``speed_estimate_period``. Must run before any bar is created — it raises once the
+    shared display exists.
+
+    Example:
+        ```python
+        import mqdm as M
+        M.configure(refresh_per_second=12, expand=True)
+        for x in M.mqdm(range(10)):
+            ...
+        ```
+    """
     return _runtime.configure(backend_options=kw or None)
 
 

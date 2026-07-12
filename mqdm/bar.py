@@ -55,6 +55,23 @@ class mqdm(Generic[T]):
         visible: Whether the task should be visible.
         bytes: Whether to render byte-oriented columns.
         **fields: Additional task fields forwarded to Rich.
+
+    Example:
+        ```python
+        # wrap any iterable
+        for x in mqdm.mqdm(items, desc="processing"):
+            ...
+
+        # an int is treated as range(n); a lone string is the description
+        for i in mqdm.mqdm(100):
+            ...
+
+        # no iterable: a manual bar you drive yourself
+        with mqdm.mqdm(total=len(items), desc="processing") as bar:
+            for x in items:
+                ...
+                bar.advance()
+        ```
     """
     # internal state
     _n: int = 0                       # the number of items completed
@@ -229,6 +246,17 @@ class mqdm(Generic[T]):
         return int(self._total or 0)
 
     def __iter__(self) -> Iterator[T]:
+        """Iterate the bound iterable, advancing the bar per item (``for x in bar``).
+
+        The bar must be bound to a sync iterable (via ``mqdm(it)`` or ``bar(it)``);
+        iterating one bound to an async iterable raises — use ``async for`` instead.
+
+        Example:
+            ```python
+            for x in mqdm.mqdm(items, desc="processing"):
+                ...
+            ```
+        """
         _iter = self._iter
         if _iter is None:
             if self._aiter is not None:
@@ -245,6 +273,17 @@ class mqdm(Generic[T]):
         return next(_iter)
 
     def __aiter__(self) -> AsyncIterator[T]:
+        """Async-iterate the bound async iterable, advancing per item (``async for x in bar``).
+
+        The bar must be bound to an async iterable; using ``async for`` on a
+        sync-bound bar raises — use a plain ``for`` instead.
+
+        Example:
+            ```python
+            async for x in mqdm.mqdm(aiter_source(), desc="streaming"):
+                ...
+            ```
+        """
         _aiter = self._aiter
         if _aiter is None:
             if self._iter is not None:
@@ -263,6 +302,16 @@ class mqdm(Generic[T]):
     # ----------------------------- Lifecycle methods ---------------------------- #
     
     def __enter__(self) -> mqdm[T]:
+        """Open the bar as a context manager, attaching it to the live display.
+
+        Example:
+            ```python
+            with mqdm.mqdm(total=len(items), desc="processing") as bar:
+                for x in items:
+                    ...
+                    bar.advance()
+            ```
+        """
         self.entered = True
         return self.open()
 
@@ -367,7 +416,23 @@ class mqdm(Generic[T]):
         total: float | None=None,
         **kw: Any,
     ) -> mqdm[T]:
-        """Iterate over an iterable with a progress bar."""
+        """Bind (or rebind) the bar to an iterable and start counting.
+
+        This backs ``mqdm(it, ...)`` and ``bar(it)``; iterating the result advances
+        the bar for you. An ``int`` is treated as ``range(it)`` and a ``str`` as the
+        description (when ``desc`` is omitted); ``total`` defaults to ``len(it)`` when
+        the length is known. Passing ``None`` (no iterable) just applies the given
+        fields, like :meth:`set`. Both sync and async iterables work — use
+        ``async for`` for the latter.
+
+        Example:
+            ```python
+            # open the bar first, then bind the iterable to it
+            with mqdm.mqdm(desc="processing") as pbar:
+                for x in pbar(items):
+                    ...
+            ```
+        """
         if isinstance(iter, str) and desc is None:  # infer string as description
             iter, desc = None, iter
         if iter is None:  # no iterable yet
@@ -517,37 +582,131 @@ class mqdm(Generic[T]):
     # ------------------------------ public methods ------------------------------ #
 
     def open(self) -> mqdm[T]:
-        """Add the task to the progress bar."""
+        """Attach the bar to the live display; reverses :meth:`close`.
+
+        A bar is already attached when created and by ``with`` / iteration, so this
+        is mainly for reattaching one you detached with :meth:`close`.
+
+        Example:
+            ```python
+            bar.close()   # detach, keeping its state
+            ...           # other terminal work
+            bar.open()    # bring it back where it left off
+            ```
+        """
         self.entered = True
         self._attach()
         return self
 
     def close(self, remove: bool | None=None) -> mqdm[T]:
-        """Remove the task from the progress bar."""
+        """Detach the bar from the live display, preserving its task state.
+
+        ``remove`` controls whether the row is erased: ``None`` (default) removes it
+        only if the bar is transient; ``True`` / ``False`` force it either way. A
+        closed bar can be reopened later with :meth:`open`.
+
+        Example:
+            ```python
+            bar = mqdm.mqdm(total=len(steps), desc="processing")
+            for step in steps:
+                run(step)
+                bar.advance()
+            bar.close(remove=True)   # detach and erase the finished row
+            ```
+        """
         self.entered = False
         self._detach(remove=remove)
         return self
 
     def print(self, *a: Any, **kw: Any) -> mqdm[T]:
-        """Print above the progress bar."""
+        """Print above the live bars and return the bar (for chaining).
+
+        The bar-scoped form of :func:`mqdm.print` — worker-safe, renders above the
+        display, and returns ``self`` so it chains: ``bar.print("done").close()``.
+        """
         self.runtime.print(*a, **kw)
         return self
 
     def set_description(self, desc: str) -> mqdm[T]:
-        """Set the description of the progress bar."""
+        """Relabel the bar — shorthand for ``set(description=...)``.
+
+        Example:
+            ```python
+            for stage in stages:
+                bar.set_description(f"stage: {stage}")
+                ...
+            ```
+        """
         return self.set(description=desc)
 
     def update(self, advance: int=1, **kw: Any) -> mqdm[T]:
-        """Increment the progress bar."""
+        """Increment the counter by ``advance`` — a convenience for ``set(advance=...)``.
+
+        Applies immediately and accepts any other :meth:`set` field alongside the
+        step. In a tight loop where you only move the counter, :meth:`advance` is
+        ~10-20x faster.
+
+        Example:
+            ```python
+            with mqdm.mqdm(total=len(chunks)) as bar:
+                for chunk in chunks:
+                    bar.update(len(chunk), description=f"read {chunk.name}")
+            ```
+        """
         return self.set(advance=advance, **kw)
-    
+
     def advance(self, n: int=1, arg: Any=...) -> mqdm[T]:
-        """Advance the progress bar by a given number of steps."""
+        """Fast increment for tight loops — the way to step a bar by hand.
+
+        Only moves the counter, and batches redraws to the refresh rate, so it
+        sustains millions of steps per second (~10-20x faster than :meth:`update`).
+        Pass ``arg=`` to also refresh a dynamic ``desc=lambda item, i: ...`` on the
+        same cheap path.
+
+        Because updates are batched, ``bar.n`` can lag by up to a frame until the
+        next flush (reconciled when the bar closes). Use :meth:`set` / :meth:`update`
+        when you need to change something other than the count, or need an exact
+        ``bar.n`` right now.
+
+        Note:
+            Iterating with ``for x in mqdm(...)`` already advances for you — reach
+            for this only in a manual loop.
+
+        Example:
+            ```python
+            with mqdm.mqdm(total=len(rows)) as bar:
+                for row in rows:
+                    process(row)
+                    bar.advance()
+            ```
+        """
         self._fast_advance(n, arg)
         return self
 
     def set(self, **kw: Any) -> mqdm[T]:
-        """Update progress bar fields."""
+        """Change any field of the bar — count, label, total, visibility, or custom fields.
+
+        Every facet is a keyword, and you can change several at once:
+
+        - ``completed=`` sets the counter to an absolute value; ``advance=`` moves it
+          by a relative amount.
+        - ``total=`` rescales the bar mid-run.
+        - ``description=`` relabels it; pass a callable ``desc=lambda item, i: ...``
+          once and it is reused on every step.
+        - ``visible=`` hides or shows the bar; ``leave=`` / ``transient=`` control
+          whether the row stays on screen after it finishes.
+        - any other keyword becomes a custom task field, for use with custom columns.
+
+        For a plain increment in a hot loop, prefer :meth:`advance`.
+
+        Example:
+            ```python
+            bar = mqdm.mqdm(total=100, desc="downloading")
+            bar.set(completed=40, description="downloading · 40%")  # count + label together
+            bar.set(total=160)                                      # grew mid-run
+            bar.set(description="verifying", completed=0, total=3)   # re-scope for a new phase
+            ```
+        """
         kw = self._process_args(**kw)
         if self.disable: return self
 

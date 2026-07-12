@@ -3,8 +3,32 @@ site_description: quiet progress bars for threads, processes, and nested work
 theme:
   name: material
   palette:
-    primary: "blue grey"
-    accent: teal
+    # primary: "blue grey"
+    # accent: pink
+
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+
+    # Palette toggle for light mode
+    - scheme: default
+      media: "(prefers-color-scheme: light)"
+      primary: "blue grey"
+      accent: pink
+      toggle:
+        icon: material/brightness-7 
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - scheme: slate
+      media: "(prefers-color-scheme: dark)"
+      primary: "blue grey"
+      accent: pink
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
   font:
     text: IBM Plex Sans
     code: IBM Plex Mono

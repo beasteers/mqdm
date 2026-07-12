@@ -18,17 +18,19 @@ def process_name():
     return mp.current_process().name
 
 class args:
-    '''Storing Function Arguments for later.
-    
-    Example:
-    ```
-    def fn(a, b=2, c=3):
-        print(a, b, c)
+    '''Bundle positional and keyword arguments for a single call.
 
-    fn_args = [args(i, c=i*2) for i in range(3)]
-    for arg in fn_args:
-        arg(fn, b=2)
-    ```
+    Each item you pass to :func:`mqdm.pool` becomes one call to your function. Wrap
+    an item in ``mqdm.args(...)`` when a call needs more than one argument, or a mix
+    of positional and keyword arguments — otherwise the bare item is passed as the
+    sole positional argument.
+
+    Example:
+        ```python
+        # one worker call per args(...) bundle: work(path, out=..., overwrite=True)
+        jobs = [mqdm.args(p, out=f"{p}.done", overwrite=True) for p in paths]
+        mqdm.pool(work, jobs)
+        ```
     '''
     def __init__(self, *a, **kw):
         self.a = a
@@ -90,7 +92,20 @@ def try_len(it, default=None):
 
 
 class fopen:
-    """Open a file with a progress bar."""
+    """Open a file and track read progress by bytes as you iterate it.
+
+    A drop-in for ``open()`` that advances a byte-oriented bar as the file is read,
+    so a line loop shows real progress even when the line count is unknown. Use it as
+    a context manager and iterate it like a file; pass ``pbar=`` to reuse an existing
+    bar, or extra keywords (``desc=``, ...) to shape the one it creates.
+
+    Example:
+        ```python
+        with mqdm.fopen("big.log") as f:
+            for line in f:
+                handle(line)
+        ```
+    """
     def __init__(self, fname: os.PathLike, mode='r', pbar: 'M.mqdm'=None, **kw):
         self.total = os.path.getsize(fname)
         self.fd = open(fname, mode)

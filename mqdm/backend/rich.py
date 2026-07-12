@@ -109,15 +109,15 @@ class Progress(progress.Progress):
         Per-task fields such as ``bytes`` are resolved by the individual column
         implementations, so the shared layout does not vary by runtime options.
         """
-        from . import rich_progress_columns
+        from ..utils import columns
 
         return (
             "[progress.description]{task.description}",
-            rich_progress_columns.TwoToneColumn(bar_width=None),
+            columns.TwoToneColumn(bar_width=None),
             "[progress.percentage]{task.percentage:>3.0f}%",
-            rich_progress_columns.MofNColumn(),
-            rich_progress_columns.SpeedColumn(),
-            rich_progress_columns.TimeElapsedColumn(compact=True),
+            columns.MofNColumn(),
+            columns.SpeedColumn(),
+            columns.TimeElapsedColumn(compact=True),
             progress.TimeRemainingColumn(compact=True),
             progress.SpinnerColumn(),
         )

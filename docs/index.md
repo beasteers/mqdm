@@ -16,7 +16,7 @@
 </p>
 
 <p class="lede">
-  In the spirit of tqdm, mqdm stands for "mutaqaddim" (مُتَقَدِّم) which means "the one who progresses" referring to the parallel workers that are advancing the progress. 
+  In the spirit of tqdm (taqadum, تقدّم), mqdm stands for "mutaqaddim" (مُتَقَدِّم) which means "the one who progresses" referring to the parallel workers that are advancing the progress. 
   The less ret-con-y name is "multiprocessing tqdm" :)
 </p>
 
@@ -35,10 +35,10 @@
 `mqdm` gives you:
 
 - [`tqdm`](https://tqdm.github.io/)-style progress bars
-- worker-pool execution with `concurrent.futures` (process and thread)
 - automatic nested progress bars across parallel workers
-- progress-safe printing and logging
-- pretty progress bars and TUI integration, powered by [`rich`](https://rich.readthedocs.io/en/stable/introduction.html) (they also make [`textual`](https://textual.textualize.io))
+- worker-pool execution with [`concurrent.futures`](https://docs.python.org/3/library/concurrent.futures.html) (processes and threads)
+- pretty progress bars and TUI integration, powered by [`rich`](https://rich.readthedocs.io/en/stable/introduction.html)
+- progress-safe printing and logging across processes
 
 The same shape also seamlessly scales to parallel work:
 
@@ -48,11 +48,15 @@ The same shape also seamlessly scales to parallel work:
 
 <div id="cast-home-why" class="asciinema-player mqdm-cast" data-cast-src="assets/casts/home/why_mqdm.cast"></div>
 
-## Some examples
+## Get Started
+
+For an end-to-end example, start with [Examples](examples/index.md). 
+
+For examples for how to use mqdm, see:
 
 1. [Loops](examples/loops.md)
 2. [Pools](examples/pools.md)
 3. [Output](examples/output.md)
 4. [Patterns](examples/patterns.md)
 
-For the full API, see [API reference](api/index.md). For an end-to-end example, start with [Examples](examples/index.md).
+For the full API, see [API reference](api/index.md). 

@@ -8,12 +8,34 @@ def sustain():
     into the scrollback as the next begins. Inside ``sustain()`` they stack and
     stay visible together as one growing panel, with ``print``/logging streaming
     above them. Nestable.
+
+    Example:
+        ```python
+        with mqdm.sustain():
+            for i in range(3):
+                for _ in mqdm.mqdm(range(4), desc=f"section {i}"):
+                    ...
+        ```
     """
     return _current_runtime().sustain()
 
 
 def print(*args, **kw):
-    """Print above active progress bars."""
+    """Print above the live bars — worker-safe, unlike the builtin ``print``.
+
+    Takes the same arguments as ``rich.print`` and renders the output above the
+    active progress display instead of tearing through it. Works from pool workers
+    too: output is routed to the process that owns the display, so it lands in one
+    coordinated place. Use this (or ``logging``) instead of the builtin ``print``
+    while bars are live.
+
+    Example:
+        ```python
+        for path in mqdm.mqdm(paths):
+            if is_interesting(path):
+                mqdm.print("found", path)   # stays above the bar
+        ```
+    """
     return _current_runtime().print(*args, **kw)
 
 
@@ -38,7 +60,21 @@ def update(n=1, i=-1, **kw):
 
 
 def pause(paused=True):
-    """Pause the progress bars. Useful for opening an interactive shell or printing stack traces."""
+    """Freeze the live display for a ``with`` block, then resume — for using the terminal.
+
+    Holds the bars' state and stops rendering so you can safely drop into an
+    interactive shell, ``pdb``, a stack trace, or a prompt on a clean screen. As a
+    context manager the bars resume automatically on exit; ``pause(False)`` resumes
+    immediately.
+
+    Example:
+        ```python
+        for i in mqdm.mqdm(range(100)):
+            if something_wrong(i):
+                with mqdm.pause():
+                    import IPython; IPython.embed()   # clean screen, bars frozen
+        ```
+    """
     return _current_runtime().pause(paused)
 
 
@@ -46,7 +82,21 @@ def pause(paused=True):
 
 
 def install_logging(logger=None, *, level=None, capture_warnings='process', markup=True, formatter=None):
-    """Install an MQDMHandler on a logger for a runtime."""
+    """Route a logger's records above the live bars (and across pool workers).
+
+    Attaches an mqdm handler to ``logger`` (the root logger by default) so log
+    output renders above the progress display instead of clobbering it, and worker
+    logs are forwarded to the display owner. ``capture_warnings='process'`` also
+    captures :mod:`warnings` in process-pool workers. See
+    :meth:`Runtime.install_logging` for the full argument reference.
+
+    Example:
+        ```python
+        import logging
+        mqdm.install_logging(level=logging.INFO)
+        logging.getLogger(__name__).info("started")   # appears above the bars
+        ```
+    """
     return _current_runtime().install_logging(
         logger=logger,
         level=level,
@@ -57,7 +107,10 @@ def install_logging(logger=None, *, level=None, capture_warnings='process', mark
 
 
 def uninstall_logging(*, logger=None):
-    """Remove an MQDMHandler from a logger for a runtime."""
+    """Remove mqdm's log routing from ``logger`` (the root logger by default).
+
+    Reverses :func:`install_logging` and releases any warning capture it enabled.
+    """
     return _current_runtime().uninstall_logging(logger=logger)
 
 # ----------------------------------- Utils ---------------------------------- #

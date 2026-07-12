@@ -83,6 +83,16 @@ async def aipool(
         on_error: Error policy when ``as_result_`` is false.
         runtime: Runtime that should own the progress display.
         **kw: Extra keyword arguments forwarded to ``fn`` for every item.
+
+    Yields:
+        Return values from ``fn`` (or :class:`Result` records if ``as_result_``),
+        as tasks complete.
+
+    Raises:
+        PoolError: If ``on_error='finish'`` and any task failed.
+
+    See also:
+        :func:`apool` (awaitable list), and :func:`ipool` for thread/process pools.
     """
     plan = _make_async_pool_plan(
         fn=fn,
@@ -163,7 +173,20 @@ async def apool(
     runtime: Runtime | None = None,
     **kw: Any,
 ) -> list[R]:
-    """Collect ``aipool`` results into a list."""
+    """Run async work over an iterable and return the results as a list.
+
+    The awaitable, list-collecting counterpart to :func:`aipool` — the same relation
+    that :func:`pool` has to :func:`ipool`. Runs up to ``n_workers`` items
+    concurrently as asyncio tasks (sync callables run via ``asyncio.to_thread``).
+
+    Returns:
+        A list of results (or :class:`Result` records if ``as_result_``).
+
+    Example:
+        ```python
+        results = await mqdm.apool(fetch, urls, n_workers=16, desc="fetching")
+        ```
+    """
     results: list[R] = []
     async for value in aipool(
         fn,
