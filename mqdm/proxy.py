@@ -64,7 +64,6 @@ class TaskSnapshot:
 
 class Progress(progress.Progress):
     multiprocess = False
-    paused = False
 
     # ---------------------------------------------------------------------------- #
     #                           Construction / Bootstrap                           #
@@ -161,11 +160,6 @@ class Progress(progress.Progress):
     def start_task(self, task_id: progress.TaskID) -> None:
         with self._lock:
             self._start_task(self._tasks[task_id])
-
-    def clear(self):
-        """Clear the progress bar."""
-        with self._lock:
-            self._tasks.clear()
 
     def new_task(self,
                   description: str='',
@@ -303,7 +297,6 @@ def proxymethod(func):
 
 class ProgressProxy(BaseProxy):
     multiprocess = True
-    paused = False
 
     start_task = proxymethod(Progress.start_task)
     stop_task = proxymethod(Progress.stop_task)
@@ -323,7 +316,6 @@ class ProgressProxy(BaseProxy):
     load_task = proxymethod(Progress.load_task)
     new_task = proxymethod(Progress.new_task)
     pop_task = proxymethod(Progress.pop_task)
-    clear = proxymethod(Progress.clear)
 
     # Local mirror Progress reused across renders (see _render_progress).
     _mirror = None
