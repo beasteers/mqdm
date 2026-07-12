@@ -73,10 +73,15 @@ class QueueTransport(Generic[TRef]):
         self.target_id = target_id
         self.owner_pid = os.getpid() if owner_pid is None else owner_pid
         self.closed = mp.Event() if closed is None else closed
+        # Persistent per-thread reply channel, created lazily on first request
+        # (worker side only). Kept out of pickled state — it is process/thread
+        # local, like multiprocessing.managers' thread-local connection.
+        self._reply_tls: Any = None
 
     def __getstate__(self) -> dict[str, Any]:
         state = self.__dict__.copy()
         state['ref'] = None
+        state['_reply_tls'] = None
         return state
 
     # def __setstate__(self, state: dict[str, Any]) -> None:
@@ -99,13 +104,36 @@ class QueueTransport(Generic[TRef]):
         except (BrokenPipeError, EOFError, OSError, ValueError) as exc:
             raise CommandTransportClosed("Command transport is closed.") from exc
 
+    def _reply_channel(self) -> tuple[Any, Any]:
+        """Return this thread's persistent ``(reply_id, recv_end)`` channel.
+
+        Like ``multiprocessing.managers``, which keeps one connection per thread
+        rather than a fresh one per call, we create the reply pipe once per
+        thread and reuse it. The paired send end is handed to the bridge once
+        (``open_reply``); every later request just carries ``reply_id``, so no
+        file descriptor is transferred per call.
+        """
+        tls = self._reply_tls
+        if tls is None:
+            tls = self._reply_tls = threading.local()
+        chan = getattr(tls, "chan", None)
+        if chan is None:
+            recv_end, send_end = mp.Pipe(duplex=False)
+            reply_id = (os.getpid(), threading.get_ident(), id(self))
+            self.queue.put(("open_reply", reply_id, send_end))
+            # Keep send_end referenced: the queue feeder pickles it
+            # asynchronously, and the bridge writes replies to its transferred
+            # copy — we just must not GC/close ours out from under the feeder.
+            tls.chan = chan = (reply_id, recv_end, send_end)
+        return chan[0], chan[1]
+
     def request(self, method: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
         if self._is_owner():
             return getattr(self.ref, method)(*args, **kwargs)
-        self._ensure_open()  # check before allocating the reply pipe
-        recv_end, send_end = mp.Pipe(duplex=False)
+        self._ensure_open()  # check before touching the reply channel
+        reply_id, recv_end = self._reply_channel()
         try:
-            self.queue.put(("request", self.target_id, method, args, kwargs, send_end))
+            self.queue.put(("request", self.target_id, method, args, kwargs, reply_id))
             while True:
                 if recv_end.poll(_REQUEST_POLL_INTERVAL):
                     ok, payload = recv_end.recv()
@@ -115,9 +143,6 @@ class QueueTransport(Generic[TRef]):
                 self._ensure_open()
         except (BrokenPipeError, EOFError, OSError, ValueError) as exc:
             raise CommandTransportClosed("Command transport is closed.") from exc
-        finally:
-            recv_end.close()
-            send_end.close()
 
 
 class QueueCommandBridge(Generic[TRef]):
@@ -131,6 +156,9 @@ class QueueCommandBridge(Generic[TRef]):
             # An explicit single driver keeps whatever key it was given (``None``
             # is the conventional "default target"); only register() auto-assigns.
             self.drivers[target_id] = driver
+        # Persistent reply ends, one per requesting worker-thread, keyed by the
+        # reply_id sent in an ``open_reply`` message and reused for every reply.
+        self._reply_ends: dict[Any, Any] = {}
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -182,14 +210,25 @@ class QueueCommandBridge(Generic[TRef]):
                     # waiting on a request. Best-effort: drop it and continue.
                     pass
                 continue
+            if kind == "open_reply":
+                _, reply_id, reply = item
+                self._reply_ends[reply_id] = reply
+                continue
             if kind == "request":
-                _, target_id, method, args, kwargs, reply = item
+                _, target_id, method, args, kwargs, reply_id = item
                 try:
-                    reply.send((True, self._dispatch(target_id, method, args, kwargs)))
+                    payload = (True, self._dispatch(target_id, method, args, kwargs))
                 except BaseException as exc:
-                    reply.send((False, exc))
-                finally:
-                    reply.close()
+                    payload = (False, exc)
+                reply = self._reply_ends.get(reply_id)
+                if reply is not None:
+                    try:
+                        reply.send(payload)
+                    except (BrokenPipeError, EOFError, OSError):
+                        # Worker gone — drop its now-dead persistent reply end.
+                        end = self._reply_ends.pop(reply_id, None)
+                        if end is not None:
+                            end.close()
                 continue
 
     def stop(self) -> None:
@@ -200,6 +239,13 @@ class QueueCommandBridge(Generic[TRef]):
         self.queue.put(None)
         self._thread.join(timeout=1.0)
         self._thread = None
+        # Safe to close reply ends now that the drain thread has stopped.
+        for end in self._reply_ends.values():
+            try:
+                end.close()
+            except Exception:
+                pass
+        self._reply_ends.clear()
 
 
 def proxymethod(func=None, *, expect_reply: bool = True, owner_only: bool = False, worker_only: bool = False):

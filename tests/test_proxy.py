@@ -259,6 +259,23 @@ def test_queue_command_bridge_survives_failing_send():
         bridge.stop()
 
 
+def test_queue_transport_reuses_one_reply_channel():
+    # Many requests on one transport must share a single persistent reply pipe,
+    # not allocate one per call (the whole point of the hybrid).
+    target = SimpleNamespace(echo=lambda v: v)
+    q = __import__("queue").Queue()
+    bridge = QueueCommandBridge(q, CommandDriver(target), target_id="t")
+    bridge.start()
+    transport = QueueTransport(q, target_id="t")  # ref=None -> routed through queue
+    try:
+        assert transport.request("echo", (1,), {}) == 1
+        assert transport.request("echo", (2,), {}) == 2
+        assert transport.request("echo", (3,), {}) == 3
+        assert len(bridge._reply_ends) == 1  # one channel, reused
+    finally:
+        bridge.stop()
+
+
 def test_queue_command_bridge_routes_multiple_targets_over_one_queue():
     first = SimpleNamespace(calls=[])
     second = SimpleNamespace(calls=[])
