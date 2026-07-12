@@ -71,6 +71,7 @@ from ._logging import MQDMHandler
 
 from .bar import mqdm
 from .pool import ipool, pool, PoolError
+from .apool import aipool, apool
 
 # ----------------------------- Development utils ---------------------------- #
 
@@ -81,6 +82,8 @@ __all__ = [
     'mqdm',
     'pool',
     'ipool',
+    'apool',
+    'aipool',
     'PoolError',
     'configure',
 ]
