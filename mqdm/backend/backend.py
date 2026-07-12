@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Protocol, TypedDict, runtime_checkable
+from typing import Any, Callable, Protocol, TypedDict, runtime_checkable
 
 
 class TaskState(TypedDict, total=False):
@@ -28,20 +28,12 @@ class RichTaskState(TaskState, total=False):
     _progress: list[tuple[float, float]] | None
 
 
-@runtime_checkable
-class ProgressBackendFactory(Protocol):
-    """Factory for constructing runtime progress backend instances.
-
-    Factories may choose their own default columns when ``columns`` is ``None``.
-    """
-
-    def create(
-        self,
-        *,
-        runtime: Any,
-        columns: tuple[Any, ...] | None = None,
-        **kw: Any,
-    ) -> "ProgressBackend": ...
+#: Signature of a callable that creates a :class:`ProgressBackend`.
+#:
+#: ``runtime`` receives the calling :class:`mqdm.Runtime`.  ``columns``
+#: is an optional column-tuple that overrides the backend's own defaults.
+#: Extra keyword arguments are forwarded to the backend constructor.
+ProgressBackendFactory = Callable[..., "ProgressBackend"]
 
 
 class ProgressBackend(Protocol):

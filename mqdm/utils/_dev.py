@@ -1,16 +1,27 @@
 import functools
 import time
 
-import rich
-from rich.console import Console
-from rich.prompt import Prompt
-from rich.console import Text
-
 import mqdm as M
 
 # ---------------------------------------------------------------------------- #
 #                               Drop-in Consoles                               #
 # ---------------------------------------------------------------------------- #
+
+_PromptCls = None
+def _ask_prompt(prompt: str, style: str = "dim cyan") -> bool:
+    # This is so we can make rich a lazy import
+    global _PromptCls
+    from rich.prompt import Prompt
+    from rich.console import Text
+    if _PromptCls is None:
+        class _Prompt(Prompt):
+            prompt_suffix = ''
+            def get_input(self, console, *a, **kw):
+                x = super().get_input(console, *a, **kw)
+                console.print('\033[F\033[A', end='')
+                return x
+        _PromptCls = _Prompt
+    return _PromptCls.ask(Text(prompt, style=style))
 
 def embed(*a, prompt='ipython?> ', exit_prompt=True):
     """Embed an IPython shell in the current environment. This will make sure the progress bars don't interfere.
@@ -29,17 +40,17 @@ def embed(*a, prompt='ipython?> ', exit_prompt=True):
     """
     with M.pause():
         from ._embed import embed
-        if not prompt or _Prompt.ask(Text(f'{prompt}', style="dim cyan")):
+        if not prompt or _ask_prompt(f'{prompt}', style="dim cyan"):
             a and M.print(*a)
             embed(colors='neutral', stack_depth=1)
-            exit_prompt and _Prompt.ask(Text('continue?> ', style="bold magenta"))
+            exit_prompt and _ask_prompt('continue?> ', style="bold magenta")
 
 
 def bp(*a, prompt='breakpoint?> '):
     """Breakpoint"""
     with M.pause():
         a and M.print(*a)
-        if not prompt or _Prompt.ask(Text(prompt, style="dim cyan")):
+        if not prompt or _ask_prompt(prompt, style="dim cyan"):
             breakpoint()
 
 
@@ -64,12 +75,6 @@ def iex(func):
     return outer
 
 
-class _Prompt(Prompt):
-    prompt_suffix = ''
-    def get_input(self, console, *a, **kw):
-        x = super().get_input(console, *a, **kw)
-        console.print('\033[F\033[A', end='')
-        return x
 
 
 def _get_debugger():
@@ -89,6 +94,8 @@ _FRAMEWORK_MODULES = ('fire', 'concurrent.futures', 'threading', 'multiprocessin
 def _print_rich_traceback():
     import fnmatch
     import sys
+    import rich
+    from rich.console import Console
     Console().print_exception(
         suppress=[
             m for k, m in sys.modules.items()

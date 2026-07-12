@@ -16,7 +16,7 @@ def example_prompt():
     for i in mqdm(range(10), desc='example', transient=False):
         time.sleep(0.1)
         if i == 5:
-            M.inp("Do you want to continue?")
+            M.embed("Do you want to continue?")
 
 
 def example_sustain():

@@ -156,14 +156,14 @@ class _MinimalFactory:
     def __init__(self):
         self.calls = []
 
-    def create(self, *, runtime, columns, **kw):
+    def __call__(self, *, runtime, columns, **kw):
         self.calls.append((runtime, columns, kw))
         return _MinimalBackend()
 
 
 def test_runtime_uses_configured_backend_factory():
     factory = _MinimalFactory()
-    runtime = M.Runtime(backend_factory=factory)
+    runtime = M.Runtime(create_backend=factory)
 
     pbar = runtime.get_pbar()
 
@@ -177,7 +177,7 @@ def test_runtime_uses_configured_backend_factory():
 
 
 def test_runtime_process_mode_rejects_non_convertible_backend():
-    runtime = M.Runtime(backend_factory=_MinimalFactory())
+    runtime = M.Runtime(create_backend=_MinimalFactory())
 
     with pytest.raises(RuntimeError, match="does not support process mode promotion"):
         runtime.get_pbar(pool_mode="process")

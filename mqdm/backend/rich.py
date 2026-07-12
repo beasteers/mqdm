@@ -89,15 +89,12 @@ class Progress(progress.Progress):
     #  process-safe proxy promotion independent of Rich's in-process-only state.   #
     # ---------------------------------------------------------------------------- #
 
-    def __init__(self, *columns, _tasks=None, _task_index=None, _pause_event=None, silent=False, **kw):
-        # Record init options before injecting the silent console so convert_proxy
-        # round-trips `silent` (and re-creates the sink console on the other side)
-        # rather than pickling the local StringIO console.
+    def __init__(self, *, columns=None, _tasks=None, _task_index=None, _pause_event=None, silent=False, **kw):
         self._init_options = dict(kw)
         if silent:
             self._init_options['silent'] = True
             kw.setdefault('console', Console(file=_DiscardFile(), force_terminal=True))
-        super().__init__(*columns, **kw)
+        super().__init__(*(columns or ()), **kw)
 
         if _tasks is not None:
             self._tasks = {task_id: self._load_task(TaskSnapshot.from_dict(task)) for task_id, task in _tasks.items()}

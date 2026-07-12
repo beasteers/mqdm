@@ -9,9 +9,10 @@ import weakref
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, Callable, Literal, TypeAlias, TypedDict
 
+
 import rich
 
-from .backend import ProgressBackend, ProgressBackendFactory, ProxyConvertibleBackend
+from .backend import ProgressBackend, ProxyConvertibleBackend, create_backend as _default_create_backend
 from . import utils
 
 if TYPE_CHECKING:
@@ -42,26 +43,6 @@ _RUNTIME_CONTEXTS_KEY = "runtime_contexts"
 DEFAULT_REFRESH_PER_SECOND = 8
 
 
-class RichProgressFactory:
-    """Default backend factory that constructs Rich-backed mqdm progress.
-
-    Rich owns the default column layout, so the runtime no longer hardcodes any
-    renderer-specific presentation details.
-    """
-
-    def create(
-        self,
-        *,
-        runtime: Runtime,
-        columns: tuple[Any, ...] | None = None,
-        **kw: Any,
-    ) -> ProgressBackend:
-        from .backend import rich
-
-        columns = columns or rich.Progress.default_progress_columns()
-        return rich.Progress(*columns, **kw)
-
-
 class Runtime:
     """Owns progress, pause, and logging state for one mqdm session.
 
@@ -75,7 +56,7 @@ class Runtime:
         self,
         on_event: Callable[[EventEnvelope], Any] | None = None,
         *,
-        backend_factory: ProgressBackendFactory | None = None,
+        create_backend: Callable[..., ProgressBackend] | None = None,
         progress_kw: dict[str, Any] | None = None,
         auto_refresh: bool = True,
         refresh_per_second: float = DEFAULT_REFRESH_PER_SECOND,
@@ -86,7 +67,6 @@ class Runtime:
     ) -> None:
         self.pbar: ProgressBackend | None = None
         self.command_dispatch: QueueCommandDispatch | None = None
-        self.backend_factory: ProgressBackendFactory = backend_factory or RichProgressFactory()
         self.paused: bool = False
         self._context_key = f"runtime:{id(self)}"
         # Event sink.  In process pools this callable is pickled and runs
@@ -107,7 +87,8 @@ class Runtime:
         self.capture_warnings: bool = False
         self.logging_config: LoggingConfig | None = None
         self.pause_wait_ttl_seconds: float = 0.5
-        self._progress_kw: dict[str, Any] = {
+        self._create_backend = create_backend or _default_create_backend
+        self._backend_kw: dict[str, Any] = {
             **(progress_kw or {}),
             "auto_refresh": auto_refresh,
             "refresh_per_second": refresh_per_second,
@@ -121,12 +102,12 @@ class Runtime:
     @property
     def progress_options(self) -> dict[str, Any]:
         """Runtime-scoped options used when creating the shared Progress."""
-        return dict(self._progress_kw)
+        return dict(self._backend_kw)
 
     def configure(
         self,
         *,
-        backend_factory: ProgressBackendFactory | None = None,
+        create_backend: Callable[..., ProgressBackend] | None = None,
         progress_kw: dict[str, Any] | None = None,
         auto_refresh: bool | None = None,
         refresh_per_second: float | None = None,
@@ -150,13 +131,13 @@ class Runtime:
         if progress_kw:
             updates = {**progress_kw, **updates}
         if not updates:
-            if backend_factory is None:
+            if create_backend is None:
                 return self
         if self.pbar is not None:
             raise RuntimeError("Cannot configure runtime progress options after the shared progress bar has been created.")
-        if backend_factory is not None:
-            self.backend_factory = backend_factory
-        self._progress_kw.update(updates)
+        if create_backend is not None:
+            self._create_backend = create_backend
+        self._backend_kw.update(updates)
         return self
 
     def __getstate__(self) -> dict[str, Any]:
@@ -225,9 +206,8 @@ class Runtime:
                 ),
             )
 
-    def new_pbar(self, columns: tuple[Any, ...] | None = None, **kw: Any) -> ProgressBackend:
-        """Construct a backend instance using the configured factory."""
-        return self.backend_factory.create(runtime=self, columns=columns, **kw)
+    def new_pbar(self, **kw: Any) -> ProgressBackend:
+        return self._create_backend(runtime=self, **kw)
 
     def _ensure_command_dispatch(self) -> QueueCommandDispatch:
         from .utils.proxy import QueueCommandDispatch
@@ -252,7 +232,7 @@ class Runtime:
     def get_pbar(self, pool_mode: T_POOL_MODE = None, **kw: Any) -> ProgressBackend:
         pbar = self.pbar
         if pbar is None:
-            pbar = self.pbar = self.new_pbar(**{**self._progress_kw, **kw})
+            pbar = self.pbar = self.new_pbar(**{**self._backend_kw, **kw})
         if pool_mode == 'process':
             pbar = self.pbar = self._ensure_process_backend(pbar)
         return pbar
