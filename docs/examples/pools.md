@@ -81,6 +81,21 @@ If you want results as they complete instead of collecting a final list:
 This is the nearest equivalent to `concurrent.futures.as_completed(...)`, but
 with a coordinated progress display built in.
 
+## Async pools
+
+For `asyncio` workloads, use `mqdm.aipool(...)` and `mqdm.apool(...)`.
+
+- `aipool(...)` is the async streaming form: `async for result in mqdm.aipool(...)`
+- `apool(...)` collects into a list: `results = await mqdm.apool(...)`
+
+```python
+--8<-- "snippets/pools/async_pool.py"
+```
+
+These APIs are intentionally separate from the process/thread pool helpers. They
+use bounded `asyncio` task concurrency, support async iterables and async worker
+functions, and fall back to `asyncio.to_thread(...)` for sync callables.
+
 ## Worker bars
 
 `mqdm` works seamlessly inside worker functions, allowing each task to have its own progress bar running in parallel.

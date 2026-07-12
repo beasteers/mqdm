@@ -53,13 +53,17 @@ def set_winsize(fd: int, rows: int, cols: int) -> None:
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
 
-def record(snippet: Path) -> Path:
+def record(snippet: Path, overwrite: bool = False) -> Path:
     rel = snippet.relative_to(SNIPPETS_DIR)
     cast_path = CASTS_DIR / rel.with_suffix(".cast")
     cast_path.parent.mkdir(parents=True, exist_ok=True)
     options = CAST_OPTIONS.get(rel, {})
     width = int(options.get("width", WIDTH))
     height = int(options.get("height", HEIGHT))
+
+    # exists and snippet modified date <= cast modified date
+    if not overwrite and cast_path.exists() and snippet.stat().st_mtime <= cast_path.stat().st_mtime:
+        return cast_path
 
     env = os.environ.copy()
     env.pop("NO_COLOR", None)
@@ -171,7 +175,7 @@ def record(snippet: Path) -> Path:
     return cast_path
 
 
-def main(*snippets, n_workers=20) -> int:
+def main(*snippets, overwrite=False, n_workers=20) -> int:
     snippets = iter_snippets() if not snippets else [ROOT / arg for arg in snippets]
 
     mqdm.pool(
@@ -180,6 +184,7 @@ def main(*snippets, n_workers=20) -> int:
         desc="Recording snippets",
         pool_mode="thread",
         n_workers=n_workers,
+        overwrite=overwrite,
     )
 
 

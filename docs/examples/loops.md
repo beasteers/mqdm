@@ -34,6 +34,18 @@ Basic usage of `mqdm` is to wrap a loop with a progress bar.
 
 <div id="cast-loops-generator" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/loops/generator.cast" data-rows="5"></div>
 
+## Async iterators
+
+`mqdm` can also wrap an `AsyncIterable` directly. Use `async for` when the
+source itself is asynchronous.
+
+```python
+--8<-- "snippets/loops/async_iter.py"
+```
+
+This keeps the same loop shape as the sync API: the bar advances once per
+yielded item, and dynamic descriptions still work the same way.
+
 ## Manual increment
 
 ```python
