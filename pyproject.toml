@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mqdm"
-version = "2.0.2"
+version = "2.0.3"
 description = "cross-process progress bars"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,7 +31,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/beasteers/mqdm"
-Documentation = "https://beasteers.readthedocs.io/mqdm"
+Documentation = "https://beasteers.github.io/mqdm"
 Issues = "https://github.com/beasteers/mqdm/issues"
 
 
