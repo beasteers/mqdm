@@ -70,16 +70,8 @@ from ._logging import MQDMHandler
 
 # ---------------------------------- Events ---------------------------------- #
 
-from .events import (
-    EventContext,
-    EventEnvelope,
-    EventType,
-    PrintEvent,
-    LogEvent,
-    TaskStartedEvent,
-    TaskFinishedEvent,
-    TaskFailedEvent,
-)
+from . import events
+from . import event_stream
 
 # ----------------------------------- Core ----------------------------------- #
 
