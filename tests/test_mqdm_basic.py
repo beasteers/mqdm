@@ -1,3 +1,4 @@
+import asyncio
 import mqdm as M
 import pickle
 import pytest
@@ -33,6 +34,43 @@ def test_mqdm_iter_counts_when_disabled():
     # Internal counters should be updated even when disabled
     assert bar.n == n_total
     assert bar.total == n_total
+
+
+def test_mqdm_async_iter_counts_when_disabled():
+    async def source():
+        for i in range(5):
+            yield i
+
+    async def run():
+        bar = M.mqdm(disable=True)
+        async for _ in bar(source()):
+            pass
+        return bar
+
+    bar = asyncio.run(run())
+
+    assert bar.n == 5
+    assert bar.total is None
+
+
+def test_mqdm_async_iter_rejects_sync_for():
+    async def source():
+        yield 1
+
+    bar = M.mqdm(source(), disable=True)
+
+    with pytest.raises(TypeError, match="use 'async for'"):
+        iter(bar)
+
+
+def test_mqdm_sync_iter_rejects_async_for():
+    async def run():
+        bar = M.mqdm([1], disable=True)
+        with pytest.raises(TypeError, match="use 'for'"):
+            async for _ in bar:
+                pass
+
+    asyncio.run(run())
 
 
 @pytest.mark.parametrize(('ordered', 'expected'), [

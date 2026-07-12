@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import AsyncIterable, AsyncIterator, Callable, Iterable, Iterator
 from time import monotonic
 from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar
 
@@ -55,6 +55,7 @@ class mqdm(Generic[T]):
     # internal state
     _n: int = 0                       # the number of items completed
     _iter: Iterator[T] | None = None  # the item iterator
+    _aiter: AsyncIterator[T] | None = None  # the async item iterator
     _total: float | None = None       # the total number of items to iterate over
     _desc: str | None = None          # the description of the progress bar
 
@@ -209,6 +210,7 @@ class mqdm(Generic[T]):
         state['_fast_advance'] = None  # cannot pickle closures
         # state['_items'] = None  # cannot pickle iterators
         state['_iter'] = None  # cannot pickle iterators
+        state['_aiter'] = None  # cannot pickle async iterators
         return state
 
     # def __getitem__(self, i: int):
@@ -224,13 +226,24 @@ class mqdm(Generic[T]):
 
     def __iter__(self) -> Iterator[T]:
         if self._iter is None:
+            if self._aiter is not None:
+                raise TypeError("mqdm object is bound to an async iterable; use 'async for'.")
             raise TypeError("mqdm object is not bound to an iterable.")
         return self._iter
 
     def __next__(self) -> T:
         if self._iter is None:
+            if self._aiter is not None:
+                raise TypeError("mqdm object is bound to an async iterable; use 'async for'.")
             raise TypeError("mqdm object is not bound to an iterable.")
         return next(self._iter)
+
+    def __aiter__(self) -> AsyncIterator[T]:
+        if self._aiter is None:
+            if self._iter is not None:
+                raise TypeError("mqdm object is bound to a sync iterable; use 'for'.")
+            raise TypeError("mqdm object is not bound to an async iterable.")
+        return self._aiter
     
     # ----------------------------- Lifecycle methods ---------------------------- #
     
@@ -323,9 +336,18 @@ class mqdm(Generic[T]):
                 update(1, x)
             update(0, x, flush=True)
 
+    async def _get_aiter(self, it: AsyncIterable[T]) -> AsyncIterator[T]:
+        with utils.noopcontext() if self.entered else self:
+            update = self._reset_fast_advance()
+            x: T | object = ...
+            async for x in it:
+                yield x
+                update(1, x)
+            update(0, x, flush=True)
+
     def __call__(
         self,
-        iter: Iterable[T] | int | str | None,
+        iter: Iterable[T] | AsyncIterable[T] | int | str | None,
         desc: str | DescFunc[T] | None=None,
         total: float | None=None,
         **kw: Any,
@@ -344,7 +366,12 @@ class mqdm(Generic[T]):
 
         total = utils.try_len(iter, self._total) if total is None else total
         self.update(0, total=total, description=desc, **kw)
-        self._iter = self._get_iter(iter)
+        self._iter = None
+        self._aiter = None
+        if isinstance(iter, AsyncIterable):
+            self._aiter = self._get_aiter(iter)
+        else:
+            self._iter = self._get_iter(iter)
         return self
     
     # ------------------------------ Internal methods ----------------------------- #
