@@ -371,6 +371,25 @@ def test_transport_command_proxy_from_ref_uses_shared_command_bridge():
     assert id(progress) in runtime.command_bridge.drivers
 
 
+def test_process_pbar_teardown_releases_command_bridge():
+    runtime = M.Runtime()
+
+    runtime.get_pbar(pool_mode="process")
+    first = runtime.command_bridge
+    assert first is not None and first._thread is not None
+
+    runtime.clear_pbar(force=True)
+    assert runtime.command_bridge is None   # torn down with the pbar
+    assert first._thread is None            # bridge thread stopped
+
+    # A later process pbar gets a fresh bridge, not the dead one — so per-worker
+    # reply ends and per-pool driver registrations don't accumulate across pools.
+    runtime.get_pbar(pool_mode="process")
+    assert runtime.command_bridge is not None
+    assert runtime.command_bridge is not first
+    runtime.clear_pbar(force=True)
+
+
 def test_transport_command_proxy_dispatches_send_and_request():
     class Target:
         def __init__(self):

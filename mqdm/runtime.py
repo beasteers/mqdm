@@ -262,6 +262,7 @@ class Runtime:
             if self.pbar is not None:
                 self.pbar.stop()
             self.pbar = None
+            self.shutdown_command_bridge()
         if self.instances:
             if strict:
                 raise RuntimeError("Cannot clear progress bar while instances are still active.")
@@ -278,6 +279,10 @@ class Runtime:
                 pbar.refresh()
                 pbar.stop()
             self.pbar = None
+            # The command bridge is only needed while a process-mode pbar is
+            # live. Tearing it down with the pbar keeps its per-worker reply ends
+            # and per-pool driver registrations from accumulating across pools.
+            self.shutdown_command_bridge()
 
     def add_instance(self, bar: MQDMBar) -> MQDMBar:
         self.instances.setdefault(hash(bar), weakref.ref(bar))
