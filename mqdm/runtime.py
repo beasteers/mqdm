@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from ._logging import MQDMHandler
     from .bar import mqdm as MQDMBar
     from .executor import T_POOL_MODE
-    from .proxy import MqdmManager
+    from .progress import MqdmManager
 
 
 class LoggingConfig(TypedDict, total=False):
@@ -54,10 +54,10 @@ class RichProgressFactory:
         columns: tuple[Any, ...] | None = None,
         **kw: Any,
     ) -> ProgressBackend:
-        from . import proxy
+        from . import progress
 
-        columns = columns or proxy.Progress.default_progress_columns()
-        return proxy.Progress(*columns, **kw)
+        columns = columns or progress.Progress.default_progress_columns()
+        return progress.Progress(*columns, **kw)
 
 
 class Runtime:
@@ -461,7 +461,7 @@ class Runtime:
     def get_manager(self) -> MqdmManager:
         if self.manager is not None:
             return self.manager
-        from .proxy import MqdmManager
+        from .progress import MqdmManager
 
         manager = MqdmManager()
         manager.start()

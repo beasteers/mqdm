@@ -4,9 +4,9 @@ import pytest
 from rich.console import Console
 
 import mqdm as M
-from mqdm import proxy as proxy_mod
+from mqdm import progress as proxy_mod
 from mqdm.backend import TaskState
-from mqdm.proxy import Progress, ProgressProxy
+from mqdm.progress import Progress, ProgressProxy
 
 
 def test_load_task_restores_finished_metadata():
@@ -202,7 +202,7 @@ def test_progress_proxy_rich_console_uses_renderable_group():
 
 
 def _task_snapshot(**kw):
-    from mqdm.proxy import TaskSnapshot
+    from mqdm.progress import TaskSnapshot
 
     defaults = dict(
         id=0, description="demo", total=100, completed=0, visible=True, fields={},
