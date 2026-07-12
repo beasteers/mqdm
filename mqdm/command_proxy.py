@@ -121,10 +121,6 @@ class QueueCommandBridge(Generic[TRef]):
                 continue
             if item is None:
                 break
-            if len(item) == 3:
-                method, args, kwargs = item
-                self.driver.dispatch(method, args, kwargs)
-                continue
             kind = item[0]
             if kind == "send":
                 _, method, args, kwargs = item

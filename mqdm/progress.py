@@ -248,11 +248,7 @@ class Progress(progress.Progress):
     def convert_proxy(self, runtime=None) -> 'QueueProgressProxy':
         """Convert to a multiprocessing-safe proxy object."""
         runtime = runtime or M._current_runtime()
-        started = self.live.is_started
         proxy = QueueProgressProxy.from_ref(self, runtime=runtime)
-        runtime.install_command_bridge(proxy)
-        if started:
-            proxy.start()
         return proxy
 
 
@@ -262,19 +258,24 @@ class QueueProgressProxy(TransportCommandProxy[Progress]):
     start = proxymethod(Progress.start, expect_reply=False, owner_only=True)
     stop = proxymethod(Progress.stop, expect_reply=False, owner_only=True)
     refresh = proxymethod(Progress.refresh, expect_reply=False, owner_only=True)
+
     write = proxymethod(Progress.write, expect_reply=False)
+
     add_task = proxymethod(Progress.add_task)
+    try_update = proxymethod(Progress.try_update, expect_reply=False)
+    dump_task = proxymethod(Progress.dump_task)
+    load_task = proxymethod(Progress.load_task, expect_reply=False)
+    pop_task = proxymethod(Progress.pop_task)
+    
+    # Unused methods (to deprecate) - not defined on ProgressBackend
+    
     new_task = proxymethod(Progress.new_task)
     update = proxymethod(Progress.update, expect_reply=False)
-    try_update = proxymethod(Progress.try_update, expect_reply=False)
     update_ = try_update
     start_task = proxymethod(Progress.start_task, expect_reply=False)
     stop_task = proxymethod(Progress.stop_task, expect_reply=False)
     remove_task = proxymethod(Progress.remove_task, expect_reply=False)
-    load_task = proxymethod(Progress.load_task, expect_reply=False)
-    dump_task = proxymethod(Progress.dump_task)
     dump_tasks = proxymethod(Progress.dump_tasks)
-    pop_task = proxymethod(Progress.pop_task)
 
     def __rich_console__(self, console, options):
         ref = self.ref

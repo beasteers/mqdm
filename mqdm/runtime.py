@@ -229,7 +229,9 @@ class Runtime:
         if pbar.multiprocess:
             return pbar
         if isinstance(pbar, ProxyConvertibleBackend):
-            return pbar.convert_proxy(runtime=self)
+            proxy = pbar.convert_proxy(runtime=self)
+            self.install_command_bridge(proxy)
+            return proxy
         raise RuntimeError(
             f"Progress backend {type(pbar).__name__!r} does not support process mode promotion."
         )
@@ -459,9 +461,10 @@ class Runtime:
         self.logging_config = None
 
     def install_command_bridge(self, pbar: ProgressBackend) -> None:
-        from .progress import QueueProgressProxy
+        from .command_proxy import TransportCommandProxy
 
-        if not isinstance(pbar, QueueProgressProxy):
+        if not isinstance(pbar, TransportCommandProxy):
+            print("Provided pbar is not a TransportCommandProxy.")
             return
         if self.command_bridge is not None:
             self.command_bridge.stop()

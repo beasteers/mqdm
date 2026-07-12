@@ -65,7 +65,8 @@ def test_load_task_advances_task_index():
 def test_runtime_install_command_bridge_starts_and_stops():
     runtime = M.Runtime()
     progress = Progress(disable=True)
-    proxy = progress.convert_proxy(runtime=runtime)
+    # proxy = progress.convert_proxy(runtime=runtime)
+    runtime._ensure_process_backend(progress)
 
     assert runtime.command_bridge is not None
 
