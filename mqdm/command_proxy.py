@@ -102,9 +102,9 @@ class QueueTransport(Generic[TRef]):
     def request(self, method: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
         if self._is_owner():
             return getattr(self.ref, method)(*args, **kwargs)
+        self._ensure_open()  # check before allocating the reply pipe
         recv_end, send_end = mp.Pipe(duplex=False)
         try:
-            self._ensure_open()
             self.queue.put(("request", self.target_id, method, args, kwargs, send_end))
             while True:
                 if recv_end.poll(_REQUEST_POLL_INTERVAL):
@@ -127,21 +127,19 @@ class QueueCommandBridge(Generic[TRef]):
         self.queue = mp.Queue() if queue is None else queue
         self.closed = mp.Event() if closed is None else closed
         self.drivers: dict[Any, CommandDriver[Any]] = {}
-        self._next_target_id = 0
         if driver is not None:
+            # An explicit single driver keeps whatever key it was given (``None``
+            # is the conventional "default target"); only register() auto-assigns.
             self.drivers[target_id] = driver
-            if isinstance(target_id, int):
-                self._next_target_id = max(self._next_target_id, target_id + 1)
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
     def register(self, target: TRef | CommandDriver[TRef], *, target_id: Any = None) -> Any:
-        if target_id is None:
-            target_id = self._next_target_id
-            self._next_target_id += 1
-        elif isinstance(target_id, int):
-            self._next_target_id = max(self._next_target_id, target_id + 1)
         driver = target if isinstance(target, CommandDriver) else CommandDriver(target)
+        if target_id is None:
+            # id() of the live target is unique and stable for its lifetime, and
+            # travels to workers as a plain int — no shared counter to race on.
+            target_id = id(driver.target)
         self.drivers[target_id] = driver
         return target_id
 
@@ -174,7 +172,15 @@ class QueueCommandBridge(Generic[TRef]):
             kind = item[0]
             if kind == "send":
                 _, target_id, method, args, kwargs = item
-                self._dispatch(target_id, method, args, kwargs)
+                try:
+                    self._dispatch(target_id, method, args, kwargs)
+                except Exception:
+                    # A fire-and-forget send that fails (e.g. a late update for
+                    # an already-unregistered target, or the target method
+                    # raising) must not kill the bridge thread — that would
+                    # silently drop every later command and hang any worker
+                    # waiting on a request. Best-effort: drop it and continue.
+                    pass
                 continue
             if kind == "request":
                 _, target_id, method, args, kwargs, reply = item
@@ -281,7 +287,10 @@ class TransportCommandProxy(CommandProxyMixin[TRef], Generic[TRef]):
                 target_id=target_id,
                 closed=command_bridge.closed,
             ))
-        return cls(QueueTransport(mp.Queue(), ref=ref))
+        # No bridge: owner-local only. Use a direct transport rather than an
+        # orphan queue that no bridge drains (which would silently drop commands
+        # if the proxy were ever sent to a worker).
+        return cls(LocalTransport(CommandDriver(ref)))
 
     @property
     def ref(self) -> TRef | None:

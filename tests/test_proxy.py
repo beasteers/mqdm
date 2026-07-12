@@ -234,6 +234,31 @@ def test_queue_command_bridge_replays_commands():
     assert target.calls == [(("hello",), {"markup": False})]
 
 
+def test_queue_command_bridge_survives_failing_send():
+    # A fire-and-forget send that raises must not kill the bridge thread, or
+    # every later command would be silently dropped (and request-callers hang).
+    import time
+
+    target = SimpleNamespace(calls=[])
+    target.boom = lambda: (_ for _ in ()).throw(ValueError("kaboom"))
+    target.ok = lambda x: target.calls.append(x)
+
+    q = __import__("queue").Queue()
+    bridge = QueueCommandBridge(q, CommandDriver(target))
+    bridge.start()
+    try:
+        q.put(("send", None, "boom", (), {}))       # raises inside the bridge
+        q.put(("send", None, "ok", (7,), {}))        # must still be delivered
+        deadline = time.time() + 1
+        while not target.calls and time.time() < deadline:
+            time.sleep(0.01)
+
+        assert bridge._thread is not None and bridge._thread.is_alive()
+        assert target.calls == [7]
+    finally:
+        bridge.stop()
+
+
 def test_queue_command_bridge_routes_multiple_targets_over_one_queue():
     first = SimpleNamespace(calls=[])
     second = SimpleNamespace(calls=[])
@@ -325,8 +350,8 @@ def test_transport_command_proxy_from_ref_uses_shared_command_bridge():
 
     assert runtime.command_bridge is not None
     assert runtime.command_bridge.queue is proxy._transport.queue
-    assert proxy._transport.target_id == 0
-    assert 0 in runtime.command_bridge.drivers
+    assert proxy._transport.target_id == id(progress)
+    assert id(progress) in runtime.command_bridge.drivers
 
 
 def test_transport_command_proxy_dispatches_send_and_request():
