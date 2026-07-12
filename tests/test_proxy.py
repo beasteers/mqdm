@@ -5,6 +5,7 @@ from rich.console import Console
 
 import mqdm as M
 from mqdm import proxy as proxy_mod
+from mqdm.backend import TaskState
 from mqdm.proxy import Progress, ProgressProxy
 
 
@@ -115,6 +116,78 @@ def test_runtime_get_pbar_converts_with_owning_runtime(monkeypatch):
     assert isinstance(proxy, Proxy)
     assert runtime.pbar is proxy
     assert captured["runtime"] is runtime
+
+
+class _MinimalBackend:
+    multiprocess = False
+
+    def __init__(self):
+        self.tasks: dict[int, TaskState] = {}
+        self.next_id = 0
+
+    def start(self):
+        return None
+
+    def stop(self):
+        return None
+
+    def refresh(self):
+        return None
+
+    def write(self, *args, **kw):
+        return None
+
+    def add_task(self, **task_kw):
+        task_id = self.next_id
+        self.next_id += 1
+        self.tasks[task_id] = {"id": task_id, **task_kw}
+        return task_id
+
+    def try_update(self, task_id, **task_update):
+        task = self.tasks.setdefault(task_id, {"id": task_id})
+        task.update(task_update)
+
+    def dump_task(self, task_id):
+        return self.tasks.get(task_id)
+
+    def load_task(self, task, start=True):
+        self.tasks[task["id"]] = dict(task)
+
+    def pop_task(self, task_id, remove=None):
+        if remove:
+            return self.tasks.pop(task_id, None)
+        return self.tasks.get(task_id)
+
+
+class _MinimalFactory:
+    def __init__(self):
+        self.calls = []
+
+    def create(self, *, runtime, columns, **kw):
+        self.calls.append((runtime, columns, kw))
+        return _MinimalBackend()
+
+
+def test_runtime_uses_configured_backend_factory():
+    factory = _MinimalFactory()
+    runtime = M.Runtime(backend_factory=factory)
+
+    pbar = runtime.get_pbar()
+
+    assert isinstance(pbar, _MinimalBackend)
+    assert runtime.pbar is pbar
+    assert factory.calls
+    created_runtime, columns, kw = factory.calls[0]
+    assert created_runtime is runtime
+    assert columns is None
+    assert kw["auto_refresh"] is True
+
+
+def test_runtime_process_mode_rejects_non_convertible_backend():
+    runtime = M.Runtime(backend_factory=_MinimalFactory())
+
+    with pytest.raises(RuntimeError, match="does not support process mode promotion"):
+        runtime.get_pbar(pool_mode="process")
 
 
 def test_progress_proxy_rich_console_uses_renderable_group():

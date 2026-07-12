@@ -12,7 +12,7 @@ from rich.console import Console
 from rich import progress
 import mqdm as M
 
-from .backend import TaskState
+from .backend import RichTaskState, TaskState
 
 
 class Task(progress.Task):
@@ -54,7 +54,7 @@ class TaskSnapshot:
             progress_samples.append((task._progress[-1].timestamp, sum(s.completed for s in task._progress)))
         return cls(**data, _progress=progress_samples)
 
-    def to_dict(self) -> TaskState:
+    def to_dict(self) -> RichTaskState:
         return dataclasses.asdict(self)
 
     @classmethod
@@ -84,6 +84,26 @@ class Progress(progress.Progress):
         if _tasks is not None:
             self._tasks = {task_id: self._load_task(TaskSnapshot.from_dict(task)) for task_id, task in _tasks.items()}
         self._task_index = progress.TaskID(_task_index or 0)
+
+    @classmethod
+    def default_progress_columns(cls) -> tuple[object, ...]:
+        """Return the default Rich column layout for mqdm progress displays.
+
+        Per-task fields such as ``bytes`` are resolved by the individual column
+        implementations, so the shared layout does not vary by runtime options.
+        """
+        from . import progress_columns
+
+        return (
+            "[progress.description]{task.description}",
+            progress_columns.TwoToneColumn(bar_width=None),
+            "[progress.percentage]{task.percentage:>3.0f}%",
+            progress_columns.MofNColumn(),
+            progress_columns.SpeedColumn(),
+            progress_columns.TimeElapsedColumn(compact=True),
+            progress.TimeRemainingColumn(compact=True),
+            progress.SpinnerColumn(),
+        )
 
     # -------------------------------- Rich API --------------------------------- #
 
@@ -177,7 +197,7 @@ class Progress(progress.Progress):
     #  exported, restored, and mirrored in another process.                        #
     # ---------------------------------------------------------------------------- #
 
-    def dump_tasks(self) -> dict[int, TaskState]:
+    def dump_tasks(self) -> dict[int, RichTaskState]:
         with self._lock:
             return {task_id: self._dump_task(self._tasks[task_id]).to_dict() for task_id in self._tasks}
 
@@ -200,7 +220,7 @@ class Progress(progress.Progress):
                 'tasks': {task_id: self._dump_task(self._tasks[task_id]).to_dict() for task_id in self._tasks},
             }
 
-    def dump_task(self, task_id) -> TaskState:
+    def dump_task(self, task_id) -> RichTaskState:
         with self._lock:
             return self._dump_task(self._tasks[task_id]).to_dict()
 

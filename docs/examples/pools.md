@@ -1,9 +1,9 @@
 # Pools
 
-`mqdm` provides convenient interfaces for parallel processing with progress bars. 
+`mqdm` provides convenient interfaces for pooled work with progress bars.
 
- - `mqdm.pool(func, items)` will run all items in parallel and return a list of results.
- - `mqdm.ipool(func, items)` will do the same, and will yield results as they complete.
+ - `mqdm.pool(func, items)` runs the items and returns a list of results.
+ - `mqdm.ipool(func, items)` does the same, but yields results as they complete.
 
 It wraps around `concurrent.futures` (builtin library) and provides a progress bar for monitoring the execution of the task queue.
 
@@ -17,7 +17,8 @@ Additionally, worker functions can have their own progress bars, which integrate
 
 <div id="cast-pools-simple-seq" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/pools/simple_sequential.cast"></div>
 
-By default, mqdm.pool runs with 0 workers. 
+With small inputs, `squeeze_=True` can collapse the work down to sequential mode.
+Otherwise, the default pool mode is `"process"` and the default worker limit is `8`.
 
 ## Simple parallel processes
 

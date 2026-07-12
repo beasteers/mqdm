@@ -4,6 +4,7 @@ Here are some common patterns for using `mqdm`:
 
 - [Loops](loops.md): simple iteration, nested bars, and dynamic descriptions
 - [Pools](pools.md): sequential, parallel, extra arguments, and complex arguments
+- [Output](output.md): print, logging, and byte-oriented progress
 - [Patterns](patterns.md): a few lower-priority patterns that are still useful
 - [Other multiprocessing tools](other-pools.md): use `mqdm` bars with
   `concurrent.futures`, `multiprocessing.Pool`, and raw threads

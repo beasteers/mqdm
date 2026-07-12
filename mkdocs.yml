@@ -44,6 +44,7 @@ nav:
       - Overview: examples/index.md
       - Loops: examples/loops.md
       - Pools: examples/pools.md
+      - Output: examples/output.md
       - Patterns: examples/patterns.md
       - Integrations: examples/other-pools.md
   - API Reference:

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, TypeAlias, TypedDict
 
 import rich
 
-from .backend import ProgressBackend, ProxyConvertibleBackend
+from .backend import ProgressBackend, ProgressBackendFactory, ProxyConvertibleBackend
 from . import utils
 
 if TYPE_CHECKING:
@@ -36,8 +36,28 @@ WarningCapturePolicy: TypeAlias = "bool | Literal['process']"
 
 _all_runtimes: weakref.WeakSet[Runtime] = weakref.WeakSet()
 _LOCAL_EVENT_TYPE = type(threading.Event())
-_RUNTIME_CONTEXT_KEY = "runtime_context"
+_RUNTIME_CONTEXTS_KEY = "runtime_contexts"
 DEFAULT_REFRESH_PER_SECOND = 8
+
+
+class RichProgressFactory:
+    """Default backend factory that constructs Rich-backed mqdm progress.
+
+    Rich owns the default column layout, so the runtime no longer hardcodes any
+    renderer-specific presentation details.
+    """
+
+    def create(
+        self,
+        *,
+        runtime: Runtime,
+        columns: tuple[Any, ...] | None = None,
+        **kw: Any,
+    ) -> ProgressBackend:
+        from . import proxy
+
+        columns = columns or proxy.Progress.default_progress_columns()
+        return proxy.Progress(*columns, **kw)
 
 
 class Runtime:
@@ -53,6 +73,7 @@ class Runtime:
         self,
         on_event: Callable[[dict], Any] | None = None,
         *,
+        backend_factory: ProgressBackendFactory | None = None,
         progress_kw: dict[str, Any] | None = None,
         auto_refresh: bool = True,
         refresh_per_second: float = DEFAULT_REFRESH_PER_SECOND,
@@ -63,7 +84,9 @@ class Runtime:
     ) -> None:
         self.pbar: ProgressBackend | None = None
         self.manager: MqdmManager | None = None
+        self.backend_factory: ProgressBackendFactory = backend_factory or RichProgressFactory()
         self.paused: bool = False
+        self._context_key = f"runtime:{id(self)}"
         # When set, emitted events are handed to this sink (a dict) instead of
         # being rendered to the console. Must be picklable to reach workers — a
         # multiprocessing manager Queue's ``.put`` qualifies. ``None`` keeps the
@@ -98,6 +121,7 @@ class Runtime:
     def configure(
         self,
         *,
+        backend_factory: ProgressBackendFactory | None = None,
         progress_kw: dict[str, Any] | None = None,
         auto_refresh: bool | None = None,
         refresh_per_second: float | None = None,
@@ -121,9 +145,12 @@ class Runtime:
         if progress_kw:
             updates = {**progress_kw, **updates}
         if not updates:
-            return self
+            if backend_factory is None:
+                return self
         if self.pbar is not None:
             raise RuntimeError("Cannot configure runtime progress options after the shared progress bar has been created.")
+        if backend_factory is not None:
+            self.backend_factory = backend_factory
         self._progress_kw.update(updates)
         return self
 
@@ -158,6 +185,16 @@ class Runtime:
         self.logging_handlers = weakref.WeakSet()
         _all_runtimes.add(self)
 
+    def _get_context_store(self) -> dict[str, dict[str, Any]]:
+        """Return the thread-local per-runtime context mapping."""
+        from .executor import _get_local, _set_local
+
+        contexts = _get_local(_RUNTIME_CONTEXTS_KEY)
+        if contexts is None:
+            contexts = {}
+            _set_local(**{_RUNTIME_CONTEXTS_KEY: contexts})
+        return contexts
+
     def prepare_pool_worker(self, pool_mode: T_POOL_MODE = None) -> None:
         pbar = self.get_pbar(pool_mode=pool_mode)
         pbar.start()
@@ -183,27 +220,9 @@ class Runtime:
                 ),
             )
 
-    def default_progress_columns(self, bytes: bool = False) -> tuple[Any, ...]:
-        """Return the default column layout for a progress bar."""
-        from rich import progress
-        from . import progress_columns
-
-        return (
-            "[progress.description]{task.description}",
-            progress_columns.TwoToneColumn(bar_width=None),
-            "[progress.percentage]{task.percentage:>3.0f}%",
-            progress_columns.MofNColumn(bytes=bytes),
-            progress_columns.SpeedColumn(bytes=bytes),
-            progress_columns.TimeElapsedColumn(compact=True),
-            progress.TimeRemainingColumn(compact=True),
-            progress.SpinnerColumn(),
-        )
-
-    def new_pbar(self, pool_mode: T_POOL_MODE = None, bytes: bool = False, columns: tuple[Any, ...] | None = None, **kw: Any) -> ProgressBackend:
-        from . import proxy
-
-        columns = columns or self.default_progress_columns(bytes=bytes)
-        return proxy.Progress(*columns, **kw)
+    def new_pbar(self, columns: tuple[Any, ...] | None = None, **kw: Any) -> ProgressBackend:
+        """Construct a backend instance using the configured factory."""
+        return self.backend_factory.create(runtime=self, columns=columns, **kw)
 
     def _ensure_process_backend(self, pbar: ProgressBackend) -> ProgressBackend:
         """Promote a local backend when process mode requires IPC-safe access."""
@@ -218,7 +237,7 @@ class Runtime:
     def get_pbar(self, pool_mode: T_POOL_MODE = None, **kw: Any) -> ProgressBackend:
         pbar = self.pbar
         if pbar is None:
-            pbar = self.pbar = self.new_pbar(pool_mode=pool_mode, **{**self._progress_kw, **kw})
+            pbar = self.pbar = self.new_pbar(**{**self._progress_kw, **kw})
         if pool_mode == 'process':
             pbar = self.pbar = self._ensure_process_backend(pbar)
         return pbar
@@ -302,22 +321,25 @@ class Runtime:
                 self.clear_pbar(strict=False)
 
     def get_context(self) -> dict[str, Any]:
-        from .executor import _get_local
-        return dict(_get_local(_RUNTIME_CONTEXT_KEY, {}) or {})
+        """Get context for this runtime without leaking values across runtimes."""
+        return dict(self._get_context_store().get(self._context_key, {}))
 
     @contextmanager
     def context(self, **context: Any):
-        from .executor import _clear_local, _set_local
+        from .executor import _clear_local
 
+        contexts = self._get_context_store()
         prev = self.get_context()
-        _set_local(**{_RUNTIME_CONTEXT_KEY: {**prev, **context}})
+        contexts[self._context_key] = {**prev, **context}
         try:
             yield self
         finally:
             if prev:
-                _set_local(**{_RUNTIME_CONTEXT_KEY: prev})
+                contexts[self._context_key] = prev
             else:
-                _clear_local(_RUNTIME_CONTEXT_KEY)
+                contexts.pop(self._context_key, None)
+                if not contexts:
+                    _clear_local(_RUNTIME_CONTEXTS_KEY)
 
     def handle_event(self, event_type: str, **data: Any) -> Any:
         """Dispatch a runtime event. Override to centralize/customize output.
@@ -352,8 +374,8 @@ class Runtime:
         Unlike :meth:`context` (a scoped push/pop), this seeds long-lived values
         such as worker identity that every subsequent event should carry.
         """
-        from .executor import _set_local
-        _set_local(**{_RUNTIME_CONTEXT_KEY: {**self.get_context(), **context}})
+        contexts = self._get_context_store()
+        contexts[self._context_key] = {**self.get_context(), **context}
 
     def print(self, *args: Any, **kw: Any) -> Any:
         return self.emit("print", args=args, kw=kw)

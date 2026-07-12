@@ -4,7 +4,11 @@ from typing import Any, Protocol, TypedDict, runtime_checkable
 
 
 class TaskState(TypedDict, total=False):
-    """Detached or transport-safe task snapshot shared across backends."""
+    """Minimum detached task snapshot contract shared across backends.
+
+    This is the state mqdm itself needs to reattach a logical task after a bar
+    is temporarily detached from a live backend.
+    """
 
     id: int
     description: str
@@ -13,14 +17,39 @@ class TaskState(TypedDict, total=False):
     visible: bool
     fields: dict[str, Any]
     start_time: float | None
+
+
+class RichTaskState(TaskState, total=False):
+    """Rich-specific snapshot fields used for restore and mirror rendering."""
+
     stop_time: float | None
     finished_time: float | None
     finished_speed: float | None
     _progress: list[tuple[float, float]] | None
 
 
+@runtime_checkable
+class ProgressBackendFactory(Protocol):
+    """Factory for constructing runtime progress backend instances.
+
+    Factories may choose their own default columns when ``columns`` is ``None``.
+    """
+
+    def create(
+        self,
+        *,
+        runtime: Any,
+        columns: tuple[Any, ...] | None = None,
+        **kw: Any,
+    ) -> "ProgressBackend": ...
+
+
 class ProgressBackend(Protocol):
-    """Internal progress backend contract used by mqdm runtime and bars."""
+    """Core runtime/backend contract used by mqdm bars.
+
+    This deliberately excludes optional capabilities such as process-mode
+    promotion, Rich render mirroring, or backend-specific snapshot extensions.
+    """
 
     multiprocess: bool
 
