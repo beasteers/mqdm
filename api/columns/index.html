@@ -25,7 +25,7 @@
     
     
       
-        <title>Output and Control - mqdm</title>
+        <title>Columns - mqdm</title>
       
     
     
@@ -68,10 +68,12 @@
   
     
     
+      
     
     
     
-    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="teal">
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
   
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
@@ -80,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#output-and-control" class="md-skip">
+        <a href="#columns" class="md-skip">
           Skip to content
         </a>
       
@@ -114,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Output and Control
+              Columns
             
           </span>
         </div>
@@ -122,7 +124,43 @@
     </div>
     
       
+        <form class="md-header__option" data-md-component="palette">
+  
     
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="pink"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="blue-grey" data-md-color-accent="pink"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
     
     
     
@@ -717,7 +755,7 @@
   <span class="md-ellipsis">
     
   
-    Output and Control
+    Columns
   
 
     
@@ -735,7 +773,7 @@
   <span class="md-ellipsis">
     
   
-    Output and Control
+    Columns
   
 
     
@@ -761,10 +799,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#mqdm.print" class="md-nav__link">
+  <a href="#mqdm.columns.TwoToneColumn" class="md-nav__link">
     <span class="md-ellipsis">
       
-        print
+        TwoToneColumn
       
     </span>
   </a>
@@ -772,10 +810,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mqdm.pause" class="md-nav__link">
+  <a href="#mqdm.columns.MofNColumn" class="md-nav__link">
     <span class="md-ellipsis">
       
-        pause
+        MofNColumn
       
     </span>
   </a>
@@ -783,13 +821,58 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mqdm.sustain" class="md-nav__link">
+  <a href="#mqdm.columns.SpeedColumn" class="md-nav__link">
     <span class="md-ellipsis">
       
-        sustain
+        SpeedColumn
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="SpeedColumn">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mqdm.columns.SpeedColumn.render" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        render
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mqdm.columns.TimeElapsedColumn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TimeElapsedColumn
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="TimeElapsedColumn">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mqdm.columns.TimeElapsedColumn.render" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        render
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -864,10 +947,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#mqdm.print" class="md-nav__link">
+  <a href="#mqdm.columns.TwoToneColumn" class="md-nav__link">
     <span class="md-ellipsis">
       
-        print
+        TwoToneColumn
       
     </span>
   </a>
@@ -875,10 +958,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mqdm.pause" class="md-nav__link">
+  <a href="#mqdm.columns.MofNColumn" class="md-nav__link">
     <span class="md-ellipsis">
       
-        pause
+        MofNColumn
       
     </span>
   </a>
@@ -886,13 +969,58 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mqdm.sustain" class="md-nav__link">
+  <a href="#mqdm.columns.SpeedColumn" class="md-nav__link">
     <span class="md-ellipsis">
       
-        sustain
+        SpeedColumn
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="SpeedColumn">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mqdm.columns.SpeedColumn.render" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        render
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mqdm.columns.TimeElapsedColumn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TimeElapsedColumn
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="TimeElapsedColumn">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mqdm.columns.TimeElapsedColumn.render" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        render
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -913,74 +1041,263 @@
 
 
 
-<h1 id="output-and-control">Output and Control<a class="headerlink" href="#output-and-control" title="Permanent link">&para;</a></h1>
-<p>These helpers are useful once work is nested, interactive, or producing
-terminal output alongside the bars.</p>
+<h1 id="columns">Columns<a class="headerlink" href="#columns" title="Permanent link">&para;</a></h1>
+<p>Progress columns for customizing bar layout. Pass a <code>columns</code> tuple via a
+runtime's <code>backend_options</code> (see the <a href="../../examples/output/#customizing-columns">Customizing columns</a>
+example) — entries are Rich <code>ProgressColumn</code>s or format strings, and these are
+mqdm's own. Write your own by subclassing <code>rich.progress.ProgressColumn</code>.</p>
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="mqdm.columns.TwoToneColumn" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">mqdm.columns.TwoToneColumn</span>
+
+
+<a href="#mqdm.columns.TwoToneColumn" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">TwoToneColumn</span><span class="p">(</span>
+    <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="n">started_style</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span>
+<span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="rich.progress.BarColumn">BarColumn</span></code></p>
+
+
+
+        <p><code>BarColumn</code> that shades a task's <code>started</code> field as a second tone.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="mqdm.columns.MofNColumn" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">mqdm.columns.MofNColumn</span>
+
+
+<a href="#mqdm.columns.MofNColumn" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">MofNColumn</span><span class="p">(</span><span class="nb">bytes</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">separator</span><span class="o">=</span><span class="s1">&#39;/&#39;</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="rich.progress.DownloadColumn">DownloadColumn</span></code></p>
+
+
+
+        <p>A progress column that shows the current vs. total count of items.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="mqdm.columns.SpeedColumn" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">mqdm.columns.SpeedColumn</span>
+
+
+<a href="#mqdm.columns.SpeedColumn" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">SpeedColumn</span><span class="p">(</span><span class="nb">bytes</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">unit_scale</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="rich.progress.TransferSpeedColumn">TransferSpeedColumn</span></code></p>
+
+
+
+        <p>Renders human readable transfer speed.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
 
 
 <div class="doc doc-object doc-function">
 
 
-<h2 id="mqdm.print" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-function"></code>            <span class="doc doc-object-name doc-function-name">mqdm.print</span>
+<h3 id="mqdm.columns.SpeedColumn.render" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">render</span>
 
 
-<a href="#mqdm.print" class="headerlink" title="Permanent link">&para;</a></h2>
-<div class="doc-signature highlight"><pre><span></span><code><span class="nf">print</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+<a href="#mqdm.columns.SpeedColumn.render" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">render</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
 </code></pre></div>
 
-    <div class="doc doc-contents first">
+    <div class="doc doc-contents ">
 
-        <p>Print above active progress bars.</p>
+        <p>Show data transfer speed.</p>
 
 
     </div>
 
 </div>
 
-<div class="doc doc-object doc-function">
 
 
-<h2 id="mqdm.pause" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-function"></code>            <span class="doc doc-object-name doc-function-name">mqdm.pause</span>
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
 
 
-<a href="#mqdm.pause" class="headerlink" title="Permanent link">&para;</a></h2>
-<div class="doc-signature highlight"><pre><span></span><code><span class="nf">pause</span><span class="p">(</span><span class="n">paused</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<h2 id="mqdm.columns.TimeElapsedColumn" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">mqdm.columns.TimeElapsedColumn</span>
+
+
+<a href="#mqdm.columns.TimeElapsedColumn" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">TimeElapsedColumn</span><span class="p">(</span><span class="n">compact</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="rich.progress.TimeRemainingColumn">TimeRemainingColumn</span></code></p>
 
-        <p>Pause the progress bars. Useful for opening an interactive shell or printing stack traces.</p>
+
+
+        <p>Renders time elapsed.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mqdm.columns.TimeElapsedColumn.render" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">render</span>
+
+
+<a href="#mqdm.columns.TimeElapsedColumn.render" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">render</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Show time elapsed.</p>
 
 
     </div>
 
 </div>
 
-<div class="doc doc-object doc-function">
 
 
-<h2 id="mqdm.sustain" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-function"></code>            <span class="doc doc-object-name doc-function-name">mqdm.sustain</span>
-
-
-<a href="#mqdm.sustain" class="headerlink" title="Permanent link">&para;</a></h2>
-<div class="doc-signature highlight"><pre><span></span><code><span class="nf">sustain</span><span class="p">()</span>
-</code></pre></div>
-
-    <div class="doc doc-contents first">
-
-        <p>Keep the live progress display alive across this block.</p>
-<p>A sequence of separate bars normally renders one at a time — each freezes
-into the scrollback as the next begins. Inside <code>sustain()</code> they stack and
-stay visible together as one growing panel, with <code>print</code>/logging streaming
-above them. Nestable.</p>
-
+  </div>
 
     </div>
 
-</div>
+</div><p>The following column objects are available from <code>rich.progress</code>:</p>
+<ul>
+<li><a href="https://rich.readthedocs.io/en/stable/reference/progress.html#rich.progress.BarColumn"><code>BarColumn</code></a> Displays the bar.</li>
+<li><a href="https://rich.readthedocs.io/en/stable/reference/progress.html#rich.progress.TextColumn"><code>TextColumn</code></a> Displays text.</li>
+<li><a href="https://rich.readthedocs.io/en/stable/reference/progress.html#rich.progress.TimeElapsedColumn"><code>TimeElapsedColumn</code></a> Displays the time elapsed.</li>
+<li><a href="https://rich.readthedocs.io/en/stable/reference/progress.html#rich.progress.TimeRemainingColumn"><code>TimeRemainingColumn</code></a> Displays the estimated time remaining.</li>
+<li><a href="https://rich.readthedocs.io/en/stable/reference/progress.html#rich.progress.MofNCompleteColumn"><code>MofNCompleteColumn</code></a> Displays completion progress as "{task.completed}/{task.total}" (works best if completed and total are ints).</li>
+<li><a href="https://rich.readthedocs.io/en/stable/reference/progress.html#rich.progress.FileSizeColumn"><code>FileSizeColumn</code></a> Displays progress as file size (assumes the steps are bytes).</li>
+<li><a href="https://rich.readthedocs.io/en/stable/reference/progress.html#rich.progress.TotalFileSizeColumn"><code>TotalFileSizeColumn</code></a> Displays total file size (assumes the steps are bytes).</li>
+<li><a href="https://rich.readthedocs.io/en/stable/reference/progress.html#rich.progress.DownloadColumn"><code>DownloadColumn</code></a> Displays download progress (assumes the steps are bytes).</li>
+<li><a href="https://rich.readthedocs.io/en/stable/reference/progress.html#rich.progress.TransferSpeedColumn"><code>TransferSpeedColumn</code></a> Displays transfer speed (assumes the steps are bytes).</li>
+<li><a href="https://rich.readthedocs.io/en/stable/reference/progress.html#rich.progress.SpinnerColumn"><code>SpinnerColumn</code></a> Displays a "spinner" animation.</li>
+<li><a href="https://rich.readthedocs.io/en/stable/reference/progress.html#rich.progress.RenderableColumn"><code>RenderableColumn</code></a> Displays an arbitrary Rich renderable in the column.</li>
+</ul>
 
 
 

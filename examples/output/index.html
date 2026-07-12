@@ -68,10 +68,12 @@
   
     
     
+      
     
     
     
-    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="teal">
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
   
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
@@ -122,7 +124,43 @@
     </div>
     
       
+        <form class="md-header__option" data-md-component="palette">
+  
     
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="pink"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="blue-grey" data-md-color-accent="pink"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
     
     
     
@@ -540,6 +578,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#customizing-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Customizing columns
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -781,14 +830,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/output/" class="md-nav__link">
+      <a href="../../api/columns/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Output and Control
+    Columns
   
 
     
@@ -896,6 +945,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#customizing-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Customizing columns
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -982,7 +1042,97 @@ number of bytes processed.</p>
 </code></pre></div>
 <div id="cast-output-open-bytes" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/output/open_bytes.cast"></div>
 
-<p>For the API behind these patterns, see <a href="../../api/output/">Output and Control</a>.</p>
+<h2 id="customizing-columns">Customizing columns<a class="headerlink" href="#customizing-columns" title="Permanent link">&para;</a></h2>
+<p>The columns a bar renders are a runtime option — pass a <code>columns</code> tuple in
+<code>backend_options</code>. Use <code>mqdm.configure(columns=...)</code> to set it for the default
+runtime, or a separate <code>mqdm.Runtime(backend_options={"columns": ...})</code> to run
+different layouts side by side. Entries are Rich <code>ProgressColumn</code>s (or format
+strings); mqdm's own columns are in <code>mqdm.columns</code>, and you can write your own
+to render per-task fields.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">mqdm</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">rich.progress</span>
+
+<span class="c1"># ------------------------- The Default Column Layout ------------------------ #</span>
+
+<span class="c1"># Default layout</span>
+<span class="n">default</span> <span class="o">=</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">Runtime</span><span class="p">(</span><span class="n">backend_options</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="p">(</span>
+    <span class="s2">&quot;[progress.description]</span><span class="si">{task.description}</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">mqdm</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">TwoToneColumn</span><span class="p">(</span><span class="n">bar_width</span><span class="o">=</span><span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;[progress.percentage]</span><span class="si">{task.percentage:&gt;3.0f}</span><span class="s2">%&quot;</span><span class="p">,</span>
+    <span class="n">mqdm</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">MofNColumn</span><span class="p">(),</span>
+    <span class="n">mqdm</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">SpeedColumn</span><span class="p">(),</span>
+    <span class="n">mqdm</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">TimeElapsedColumn</span><span class="p">(</span><span class="n">compact</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">TimeRemainingColumn</span><span class="p">(</span><span class="n">compact</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">SpinnerColumn</span><span class="p">(),</span>
+<span class="p">)})</span>
+
+<span class="c1"># Run mqdm with the runtime</span>
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">100</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">default</span><span class="p">):</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span>
+
+<span class="c1"># ----------------------------- A Compact Layout ----------------------------- #</span>
+
+<span class="c1"># Compact — just a label, a bar, and a percentage.</span>
+<span class="n">compact</span> <span class="o">=</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">Runtime</span><span class="p">(</span><span class="n">backend_options</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="p">(</span>
+    <span class="s2">&quot;[progress.description]</span><span class="si">{task.description}</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">BarColumn</span><span class="p">(</span><span class="n">bar_width</span><span class="o">=</span><span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;[progress.percentage]</span><span class="si">{task.percentage:&gt;3.0f}</span><span class="s2">%&quot;</span><span class="p">,</span>
+<span class="p">)})</span>
+
+<span class="c1"># Run mqdm with the runtime</span>
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">100</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;compact&quot;</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">compact</span><span class="p">):</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span>
+
+<span class="c1"># ----------------------------- Whatever you like ---------------------------- #</span>
+
+<span class="c1"># Reordered mix of Rich and mqdm columns: count, then the two-tone bar, then ETA.</span>
+<span class="n">moons</span> <span class="o">=</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">Runtime</span><span class="p">(</span><span class="n">backend_options</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="p">(</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">SpinnerColumn</span><span class="p">(</span><span class="s1">&#39;moon&#39;</span><span class="p">),</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">SpinnerColumn</span><span class="p">(</span><span class="s1">&#39;moon&#39;</span><span class="p">),</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">SpinnerColumn</span><span class="p">(</span><span class="s1">&#39;moon&#39;</span><span class="p">),</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">SpinnerColumn</span><span class="p">(</span><span class="s1">&#39;dots&#39;</span><span class="p">),</span>
+    <span class="s2">&quot;[bold]</span><span class="si">{task.description}</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">BarColumn</span><span class="p">(</span><span class="n">bar_width</span><span class="o">=</span><span class="kc">None</span><span class="p">),</span>
+    <span class="s2">&quot;[bold]</span><span class="si">{task.description}</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">SpinnerColumn</span><span class="p">(</span><span class="s1">&#39;dots&#39;</span><span class="p">),</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">SpinnerColumn</span><span class="p">(</span><span class="s1">&#39;moon&#39;</span><span class="p">),</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">SpinnerColumn</span><span class="p">(</span><span class="s1">&#39;moon&#39;</span><span class="p">),</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">SpinnerColumn</span><span class="p">(</span><span class="s1">&#39;moon&#39;</span><span class="p">),</span>
+<span class="p">)})</span>
+
+<span class="c1"># Run mqdm with the runtime</span>
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">100</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;moons&quot;</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">moons</span><span class="p">):</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span>
+</code></pre></div>
+<div id="cast-output-columns" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/output/columns.cast"></div>
+
+<p>You can also define your own custom column types by subclassing <code>rich.progress.ProgressColumn</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">mqdm</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">rich.progress</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">rich.text</span><span class="w"> </span><span class="kn">import</span> <span class="n">Text</span>
+
+<span class="c1"># ----------------------------- Custom Column Type ---------------------------- #</span>
+
+<span class="c1"># Your own column, rendering a per-task field you pass to the bar.</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">RateColumn</span><span class="p">(</span><span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">ProgressColumn</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">render</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">Text</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">task</span><span class="o">.</span><span class="n">fields</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;rate&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;?&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">/s&quot;</span><span class="p">,</span> <span class="n">style</span><span class="o">=</span><span class="s2">&quot;cyan&quot;</span><span class="p">)</span>
+
+
+<span class="n">custom</span> <span class="o">=</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">Runtime</span><span class="p">(</span><span class="n">backend_options</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="p">(</span>
+    <span class="s2">&quot;</span><span class="si">{task.description}</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">BarColumn</span><span class="p">(</span><span class="n">bar_width</span><span class="o">=</span><span class="kc">None</span><span class="p">),</span>
+    <span class="n">RateColumn</span><span class="p">(),</span>
+<span class="p">)})</span>
+
+<span class="c1"># Run mqdm with the runtime</span>
+<span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">100</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;custom field&quot;</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">custom</span><span class="p">,</span> <span class="n">rate</span><span class="o">=</span><span class="mi">42</span><span class="p">):</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span>
+</code></pre></div>
+<div id="cast-output-custom-column-type" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/output/custom_column_type.cast"></div>
 
 
 

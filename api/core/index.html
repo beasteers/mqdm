@@ -68,10 +68,12 @@
   
     
     
+      
     
     
     
-    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="teal">
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
   
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
@@ -122,7 +124,43 @@
     </div>
     
       
+        <form class="md-header__option" data-md-component="palette">
+  
     
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="pink"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="blue-grey" data-md-color-accent="pink"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
     
     
     
@@ -711,21 +749,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mqdm.mqdm.__call__" class="md-nav__link">
+  <a href="#mqdm.mqdm.set" class="md-nav__link">
     <span class="md-ellipsis">
       
-        __call__
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#mqdm.mqdm.__len__" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        __len__
+        set
       
     </span>
   </a>
@@ -744,10 +771,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mqdm.mqdm.close" class="md-nav__link">
+  <a href="#mqdm.mqdm.update" class="md-nav__link">
     <span class="md-ellipsis">
       
-        close
+        update
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mqdm.mqdm.__enter__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __enter__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mqdm.mqdm.__exit__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __exit__
       
     </span>
   </a>
@@ -766,10 +815,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mqdm.mqdm.print" class="md-nav__link">
+  <a href="#mqdm.mqdm.close" class="md-nav__link">
     <span class="md-ellipsis">
       
-        print
+        close
       
     </span>
   </a>
@@ -777,10 +826,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mqdm.mqdm.set" class="md-nav__link">
+  <a href="#mqdm.mqdm.__call__" class="md-nav__link">
     <span class="md-ellipsis">
       
-        set
+        __call__
       
     </span>
   </a>
@@ -788,10 +837,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mqdm.mqdm.set_description" class="md-nav__link">
+  <a href="#mqdm.mqdm.__iter__" class="md-nav__link">
     <span class="md-ellipsis">
       
-        set_description
+        __iter__
       
     </span>
   </a>
@@ -799,10 +848,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mqdm.mqdm.update" class="md-nav__link">
+  <a href="#mqdm.mqdm.__aiter__" class="md-nav__link">
     <span class="md-ellipsis">
       
-        update
+        __aiter__
       
     </span>
   </a>
@@ -886,14 +935,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../output/" class="md-nav__link">
+      <a href="../columns/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Output and Control
+    Columns
   
 
     
@@ -1003,21 +1052,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mqdm.mqdm.__call__" class="md-nav__link">
+  <a href="#mqdm.mqdm.set" class="md-nav__link">
     <span class="md-ellipsis">
       
-        __call__
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#mqdm.mqdm.__len__" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        __len__
+        set
       
     </span>
   </a>
@@ -1036,10 +1074,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mqdm.mqdm.close" class="md-nav__link">
+  <a href="#mqdm.mqdm.update" class="md-nav__link">
     <span class="md-ellipsis">
       
-        close
+        update
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mqdm.mqdm.__enter__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __enter__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mqdm.mqdm.__exit__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __exit__
       
     </span>
   </a>
@@ -1058,10 +1118,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mqdm.mqdm.print" class="md-nav__link">
+  <a href="#mqdm.mqdm.close" class="md-nav__link">
     <span class="md-ellipsis">
       
-        print
+        close
       
     </span>
   </a>
@@ -1069,10 +1129,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mqdm.mqdm.set" class="md-nav__link">
+  <a href="#mqdm.mqdm.__call__" class="md-nav__link">
     <span class="md-ellipsis">
       
-        set
+        __call__
       
     </span>
   </a>
@@ -1080,10 +1140,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mqdm.mqdm.set_description" class="md-nav__link">
+  <a href="#mqdm.mqdm.__iter__" class="md-nav__link">
     <span class="md-ellipsis">
       
-        set_description
+        __iter__
       
     </span>
   </a>
@@ -1091,10 +1151,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mqdm.mqdm.update" class="md-nav__link">
+  <a href="#mqdm.mqdm.__aiter__" class="md-nav__link">
     <span class="md-ellipsis">
       
-        update
+        __aiter__
       
     </span>
   </a>
@@ -1374,6 +1434,24 @@ update.</p>
     </table>
 
 
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="c1"># wrap any iterable</span>
+<span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="n">items</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;processing&quot;</span><span class="p">):</span>
+    <span class="o">...</span>
+
+<span class="c1"># an int is treated as range(n); a lone string is the description</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="mi">100</span><span class="p">):</span>
+    <span class="o">...</span>
+
+<span class="c1"># no iterable: a manual bar you drive yourself</span>
+<span class="k">with</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">items</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;processing&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">bar</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">items</span><span class="p">:</span>
+        <span class="o">...</span>
+        <span class="n">bar</span><span class="o">.</span><span class="n">advance</span><span class="p">()</span>
+</code></pre></div>
+</details>
+
 
 
 
@@ -1447,43 +1525,39 @@ update.</p>
 <div class="doc doc-object doc-function">
 
 
-<h3 id="mqdm.mqdm.__call__" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">__call__</span>
+<h3 id="mqdm.mqdm.set" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">set</span>
 
 
-<a href="#mqdm.mqdm.__call__" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><span class="nf">__call__</span><span class="p">(</span>
-    <span class="nb">iter</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">T</span><span class="p">]</span> <span class="o">|</span> <span class="n">AsyncIterable</span><span class="p">[</span><span class="n">T</span><span class="p">]</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="n">desc</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">DescFunc</span><span class="p">[</span><span class="n">T</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="n">total</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="o">**</span><span class="n">kw</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">mqdm</span><span class="p">[</span><span class="n">T</span><span class="p">]</span>
+<a href="#mqdm.mqdm.set" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">set</span><span class="p">(</span><span class="o">**</span><span class="n">kw</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">mqdm</span><span class="p">[</span><span class="n">T</span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
 
-        <p>Iterate over an iterable with a progress bar.</p>
+        <p>Change any field of the bar — count, label, total, visibility, or custom fields.</p>
+<p>Every facet is a keyword, and you can change several at once:</p>
+<ul>
+<li><code>completed=</code> sets the counter to an absolute value; <code>advance=</code> moves it
+  by a relative amount.</li>
+<li><code>total=</code> rescales the bar mid-run.</li>
+<li><code>description=</code> relabels it; pass a callable <code>desc=lambda item, i: ...</code>
+  once and it is reused on every step.</li>
+<li><code>visible=</code> hides or shows the bar; <code>leave=</code> / <code>transient=</code> control
+  whether the row stays on screen after it finishes.</li>
+<li>any other keyword becomes a custom task field, for use with custom columns.</li>
+</ul>
+<p>For a plain increment in a hot loop, prefer :meth:<code>advance</code>.</p>
 
 
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
-<h3 id="mqdm.mqdm.__len__" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">__len__</span>
-
-
-<a href="#mqdm.mqdm.__len__" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><span class="nf">__len__</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">int</span>
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="n">bar</span> <span class="o">=</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;downloading&quot;</span><span class="p">)</span>
+<span class="n">bar</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">completed</span><span class="o">=</span><span class="mi">40</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">&quot;downloading · 40%&quot;</span><span class="p">)</span>  <span class="c1"># count + label together</span>
+<span class="n">bar</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="mi">160</span><span class="p">)</span>                                      <span class="c1"># grew mid-run</span>
+<span class="n">bar</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s2">&quot;verifying&quot;</span><span class="p">,</span> <span class="n">completed</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>   <span class="c1"># re-scope for a new phase</span>
 </code></pre></div>
-
-    <div class="doc doc-contents ">
-
-        <p>Get the total number of items.</p>
-
+</details>
 
     </div>
 
@@ -1502,8 +1576,31 @@ update.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Advance the progress bar by a given number of steps.</p>
+        <p>Fast increment for tight loops — the way to step a bar by hand.</p>
+<p>Only moves the counter, and batches redraws to the refresh rate, so it
+sustains millions of steps per second (~10-20x faster than :meth:<code>update</code>).
+Pass <code>arg=</code> to also refresh a dynamic <code>desc=lambda item, i: ...</code> on the
+same cheap path.</p>
+<p>Because updates are batched, <code>bar.n</code> can lag by up to a frame until the
+next flush (reconciled when the bar closes). Use :meth:<code>set</code> / :meth:<code>update</code>
+when you need to change something other than the count, or need an exact
+<code>bar.n</code> right now.</p>
 
+
+<details class="note" open>
+  <summary>Note</summary>
+  <p>Iterating with <code>for x in mqdm(...)</code> already advances for you — reach
+for this only in a manual loop.</p>
+</details>
+
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="k">with</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">rows</span><span class="p">))</span> <span class="k">as</span> <span class="n">bar</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">:</span>
+        <span class="n">process</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+        <span class="n">bar</span><span class="o">.</span><span class="n">advance</span><span class="p">()</span>
+</code></pre></div>
+</details>
 
     </div>
 
@@ -1512,17 +1609,77 @@ update.</p>
 <div class="doc doc-object doc-function">
 
 
-<h3 id="mqdm.mqdm.close" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">close</span>
+<h3 id="mqdm.mqdm.update" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">update</span>
 
 
-<a href="#mqdm.mqdm.close" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><span class="nf">close</span><span class="p">(</span><span class="n">remove</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">mqdm</span><span class="p">[</span><span class="n">T</span><span class="p">]</span>
+<a href="#mqdm.mqdm.update" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">update</span><span class="p">(</span><span class="n">advance</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">mqdm</span><span class="p">[</span><span class="n">T</span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
 
-        <p>Remove the task from the progress bar.</p>
+        <p>Increment the counter by <code>advance</code> — a convenience for <code>set(advance=...)</code>.</p>
+<p>Applies immediately and accepts any other :meth:<code>set</code> field alongside the
+step. In a tight loop where you only move the counter, :meth:<code>advance</code> is
+~10-20x faster.</p>
+
+
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="k">with</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">chunks</span><span class="p">))</span> <span class="k">as</span> <span class="n">bar</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">chunk</span> <span class="ow">in</span> <span class="n">chunks</span><span class="p">:</span>
+        <span class="n">bar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">chunk</span><span class="p">),</span> <span class="n">description</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;read </span><span class="si">{</span><span class="n">chunk</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+</details>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mqdm.mqdm.__enter__" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">__enter__</span>
+
+
+<a href="#mqdm.mqdm.__enter__" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">__enter__</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">mqdm</span><span class="p">[</span><span class="n">T</span><span class="p">]</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Open the bar as a context manager, attaching it to the live display.</p>
+
+
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="k">with</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">items</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;processing&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">bar</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">items</span><span class="p">:</span>
+        <span class="o">...</span>
+        <span class="n">bar</span><span class="o">.</span><span class="n">advance</span><span class="p">()</span>
+</code></pre></div>
+</details>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mqdm.mqdm.__exit__" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">__exit__</span>
+
+
+<a href="#mqdm.mqdm.__exit__" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">__exit__</span><span class="p">(</span>
+    <span class="n">t</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span> <span class="n">e</span><span class="p">:</span> <span class="ne">BaseException</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">tb</span><span class="p">:</span> <span class="nb">object</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
 
 
     </div>
@@ -1542,8 +1699,18 @@ update.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Add the task to the progress bar.</p>
+        <p>Attach the bar to the live display; reverses :meth:<code>close</code>.</p>
+<p>A bar is already attached when created and by <code>with</code> / iteration, so this
+is mainly for reattaching one you detached with :meth:<code>close</code>.</p>
 
+
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="n">bar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>   <span class="c1"># detach, keeping its state</span>
+<span class="o">...</span>           <span class="c1"># other terminal work</span>
+<span class="n">bar</span><span class="o">.</span><span class="n">open</span><span class="p">()</span>    <span class="c1"># bring it back where it left off</span>
+</code></pre></div>
+</details>
 
     </div>
 
@@ -1552,18 +1719,31 @@ update.</p>
 <div class="doc doc-object doc-function">
 
 
-<h3 id="mqdm.mqdm.print" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">print</span>
+<h3 id="mqdm.mqdm.close" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">close</span>
 
 
-<a href="#mqdm.mqdm.print" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><span class="nf">print</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">mqdm</span><span class="p">[</span><span class="n">T</span><span class="p">]</span>
+<a href="#mqdm.mqdm.close" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">close</span><span class="p">(</span><span class="n">remove</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">mqdm</span><span class="p">[</span><span class="n">T</span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
 
-        <p>Print above the progress bar.</p>
+        <p>Detach the bar from the live display, preserving its task state.</p>
+<p><code>remove</code> controls whether the row is erased: <code>None</code> (default) removes it
+only if the bar is transient; <code>True</code> / <code>False</code> force it either way. A
+closed bar can be reopened later with :meth:<code>open</code>.</p>
 
+
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="n">bar</span> <span class="o">=</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">steps</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;processing&quot;</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="n">steps</span><span class="p">:</span>
+    <span class="n">run</span><span class="p">(</span><span class="n">step</span><span class="p">)</span>
+    <span class="n">bar</span><span class="o">.</span><span class="n">advance</span><span class="p">()</span>
+<span class="n">bar</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">remove</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>   <span class="c1"># detach and erase the finished row</span>
+</code></pre></div>
+</details>
 
     </div>
 
@@ -1572,18 +1752,38 @@ update.</p>
 <div class="doc doc-object doc-function">
 
 
-<h3 id="mqdm.mqdm.set" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">set</span>
+<h3 id="mqdm.mqdm.__call__" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">__call__</span>
 
 
-<a href="#mqdm.mqdm.set" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><span class="nf">set</span><span class="p">(</span><span class="o">**</span><span class="n">kw</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">mqdm</span><span class="p">[</span><span class="n">T</span><span class="p">]</span>
+<a href="#mqdm.mqdm.__call__" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">__call__</span><span class="p">(</span>
+    <span class="nb">iter</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">T</span><span class="p">]</span> <span class="o">|</span> <span class="n">AsyncIterable</span><span class="p">[</span><span class="n">T</span><span class="p">]</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">desc</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">DescFunc</span><span class="p">[</span><span class="n">T</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">total</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kw</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">mqdm</span><span class="p">[</span><span class="n">T</span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
 
-        <p>Update progress bar fields.</p>
+        <p>Bind (or rebind) the bar to an iterable and start counting.</p>
+<p>This backs <code>mqdm(it, ...)</code> and <code>bar(it)</code>; iterating the result advances
+the bar for you. An <code>int</code> is treated as <code>range(it)</code> and a <code>str</code> as the
+description (when <code>desc</code> is omitted); <code>total</code> defaults to <code>len(it)</code> when
+the length is known. Passing <code>None</code> (no iterable) just applies the given
+fields, like :meth:<code>set</code>. Both sync and async iterables work — use
+<code>async for</code> for the latter.</p>
 
+
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="c1"># open the bar first, then bind the iterable to it</span>
+<span class="k">with</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="n">desc</span><span class="o">=</span><span class="s2">&quot;processing&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">pbar</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">pbar</span><span class="p">(</span><span class="n">items</span><span class="p">):</span>
+        <span class="o">...</span>
+</code></pre></div>
+</details>
 
     </div>
 
@@ -1592,18 +1792,27 @@ update.</p>
 <div class="doc doc-object doc-function">
 
 
-<h3 id="mqdm.mqdm.set_description" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">set_description</span>
+<h3 id="mqdm.mqdm.__iter__" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">__iter__</span>
 
 
-<a href="#mqdm.mqdm.set_description" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><span class="nf">set_description</span><span class="p">(</span><span class="n">desc</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">mqdm</span><span class="p">[</span><span class="n">T</span><span class="p">]</span>
+<a href="#mqdm.mqdm.__iter__" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">__iter__</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="n">T</span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
 
-        <p>Set the description of the progress bar.</p>
+        <p>Iterate the bound iterable, advancing the bar per item (<code>for x in bar</code>).</p>
+<p>The bar must be bound to a sync iterable (via <code>mqdm(it)</code> or <code>bar(it)</code>);
+iterating one bound to an async iterable raises — use <code>async for</code> instead.</p>
 
+
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="n">items</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;processing&quot;</span><span class="p">):</span>
+    <span class="o">...</span>
+</code></pre></div>
+</details>
 
     </div>
 
@@ -1612,18 +1821,27 @@ update.</p>
 <div class="doc doc-object doc-function">
 
 
-<h3 id="mqdm.mqdm.update" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">update</span>
+<h3 id="mqdm.mqdm.__aiter__" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">__aiter__</span>
 
 
-<a href="#mqdm.mqdm.update" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><span class="nf">update</span><span class="p">(</span><span class="n">advance</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">mqdm</span><span class="p">[</span><span class="n">T</span><span class="p">]</span>
+<a href="#mqdm.mqdm.__aiter__" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">__aiter__</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">AsyncIterator</span><span class="p">[</span><span class="n">T</span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
 
-        <p>Increment the progress bar.</p>
+        <p>Async-iterate the bound async iterable, advancing per item (<code>async for x in bar</code>).</p>
+<p>The bar must be bound to an async iterable; using <code>async for</code> on a
+sync-bound bar raises — use a plain <code>for</code> instead.</p>
 
+
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="k">async</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="n">aiter_source</span><span class="p">(),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;streaming&quot;</span><span class="p">):</span>
+    <span class="o">...</span>
+</code></pre></div>
+</details>
 
     </div>
 

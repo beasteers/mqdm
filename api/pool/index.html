@@ -68,10 +68,12 @@
   
     
     
+      
     
     
     
-    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="teal">
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
   
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
@@ -122,7 +124,43 @@
     </div>
     
       
+        <form class="md-header__option" data-md-component="palette">
+  
     
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="pink"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="blue-grey" data-md-color-accent="pink"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
     
     
     
@@ -748,6 +786,45 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#mqdm.Result" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Result
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mqdm.PoolError" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PoolError
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="PoolError">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mqdm.PoolError.count" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        count
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -792,14 +869,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../output/" class="md-nav__link">
+      <a href="../columns/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Output and Control
+    Columns
   
 
     
@@ -915,6 +992,45 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mqdm.Result" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Result
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mqdm.PoolError" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PoolError
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="PoolError">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mqdm.PoolError.count" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        count
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1224,8 +1340,40 @@
 
     <div class="doc doc-contents first">
 
-        <p>Collect <code>aipool</code> results into a list.</p>
+        <p>Run async work over an iterable and return the results as a list.</p>
+<p>The awaitable, list-collecting counterpart to :func:<code>aipool</code> — the same relation
+that :func:<code>pool</code> has to :func:<code>ipool</code>. Runs up to <code>n_workers</code> items
+concurrently as asyncio tasks (sync callables run via <code>asyncio.to_thread</code>).</p>
 
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="list">list</span>[<span title="mqdm.parallel.apool.R">R</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A list of results (or :class:<code>Result</code> records if <code>as_result_</code>).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="n">results</span> <span class="o">=</span> <span class="k">await</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">apool</span><span class="p">(</span><span class="n">fetch</span><span class="p">,</span> <span class="n">urls</span><span class="p">,</span> <span class="n">n_workers</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;fetching&quot;</span><span class="p">)</span>
+</code></pre></div>
+</details>
 
     </div>
 
@@ -1456,6 +1604,67 @@ failures.</p>
     </table>
 
 
+    <p><span class="doc-section-title">Yields:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="collections.abc.AsyncIterator">AsyncIterator</span>[<span title="mqdm.parallel.apool.R">R</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Return values from <code>fn</code> (or :class:<code>Result</code> records if <code>as_result_</code>),</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="collections.abc.AsyncIterator">AsyncIterator</span>[<span title="mqdm.parallel.apool.R">R</span>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>as tasks complete.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="mqdm.PoolError (mqdm.parallel.pool.PoolError)" href="#mqdm.PoolError">PoolError</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If <code>on_error='finish'</code> and any task failed.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="see-also" open>
+  <summary>See also</summary>
+  <p>:func:<code>apool</code> (awaitable list), and :func:<code>ipool</code> for thread/process pools.</p>
+</details>
+
     </div>
 
 </div>
@@ -1476,15 +1685,77 @@ failures.</p>
 
 
 
-        <p>Storing Function Arguments for later.</p>
-<p>Example:
-<div class="highlight"><pre><span></span><code>def fn(a, b=2, c=3):
-    print(a, b, c)
+        <p>Bundle positional and keyword arguments for a single call.</p>
+<p>Each item you pass to :func:<code>mqdm.pool</code> becomes one call to your function. Wrap
+an item in <code>mqdm.args(...)</code> when a call needs more than one argument, or a mix
+of positional and keyword arguments — otherwise the bare item is passed as the
+sole positional argument.</p>
 
-fn_args = [args(i, c=i*2) for i in range(3)]
-for arg in fn_args:
-    arg(fn, b=2)
-</code></pre></div></p>
+
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="c1"># one worker call per args(...) bundle: work(path, out=..., overwrite=True)</span>
+<span class="n">jobs</span> <span class="o">=</span> <span class="p">[</span><span class="n">mqdm</span><span class="o">.</span><span class="n">args</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">out</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">p</span><span class="si">}</span><span class="s2">.done&quot;</span><span class="p">,</span> <span class="n">overwrite</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">paths</span><span class="p">]</span>
+<span class="n">mqdm</span><span class="o">.</span><span class="n">pool</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">jobs</span><span class="p">)</span>
+</code></pre></div>
+</details>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="mqdm.Result" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">mqdm.Result</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+<a href="#mqdm.Result" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">Result</span><span class="p">(</span>
+    <span class="n">index</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">arg</span><span class="p">:</span> <span class="n">args</span><span class="p">,</span>
+    <span class="n">value</span><span class="p">:</span> <span class="n">R</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">error</span><span class="p">:</span> <span class="ne">BaseException</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+
+
+
+        <p>A single task's outcome: its input, return value, and any error.</p>
+<p><code>index</code> matches the <code>task_index</code> carried on the event stream, so a result
+correlates to its live events by key rather than by completion order.</p>
 
 
 
@@ -1503,6 +1774,85 @@ for arg in fn_args:
 
 
 
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="mqdm.PoolError" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">mqdm.PoolError</span>
+
+
+<a href="#mqdm.PoolError" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">PoolError</span><span class="p">(</span><span class="n">detail</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">results</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Result</span><span class="p">])</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="Exception">Exception</span></code></p>
+
+
+
+        <p>Aggregates the failures from a pool run (<code>on_error='finish'</code>).</p>
+<p>A single distinct exception across many calls, or many distinct exceptions,
+all surface as one <code>PoolError</code> — there is no single "right" class to
+re-raise when tasks fail in different ways. The rendered message groups
+identical failures and lists the calls that produced them; <code>results</code> holds
+the failed :class:<code>Result</code> records (each with its <code>index</code>, <code>arg</code> and the
+original <code>error</code>) for programmatic inspection.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="mqdm.PoolError.count" class="doc doc-heading">
+            <span class="doc doc-object-name doc-attribute-name">count</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#mqdm.PoolError.count" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">count</span><span class="p">:</span> <span class="nb">int</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Total number of failed calls.</p>
+
+    </div>
+
+</div>
 
 
 

@@ -11,7 +11,7 @@
       
       
       
-        <link rel="prev" href="../output/">
+        <link rel="prev" href="../columns/">
       
       
       
@@ -66,10 +66,12 @@
   
     
     
+      
     
     
     
-    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="teal">
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
   
     
     <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
@@ -120,7 +122,43 @@
     </div>
     
       
+        <form class="md-header__option" data-md-component="palette">
+  
     
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="blue-grey" data-md-color-accent="pink"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="blue-grey" data-md-color-accent="pink"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
     
     
     
@@ -699,14 +737,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../output/" class="md-nav__link">
+      <a href="../columns/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Output and Control
+    Columns
   
 
     
@@ -825,6 +863,17 @@
     <span class="md-ellipsis">
       
         configure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mqdm.runtime.Runtime.context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        context
       
     </span>
   </a>
@@ -1034,6 +1083,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#mqdm.runtime.Runtime.context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        context
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#mqdm.runtime.Runtime.emit" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1183,8 +1243,21 @@ progress state, logging, and runtime-scoped configuration.</p>
 
     <div class="doc doc-contents first">
 
-        <p>Configure the implicit global runtime before its first progress bar.</p>
+        <p>Set display options on the implicit global runtime, before its first bar.</p>
+<p>Keywords are forwarded to the progress backend (Rich by default), e.g.
+<code>refresh_per_second</code>, <code>expand</code>, <code>redirect_stdout</code> / <code>redirect_stderr</code>,
+<code>speed_estimate_period</code>. Must run before any bar is created — it raises once the
+shared display exists.</p>
 
+
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">mqdm</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">M</span>
+<span class="n">M</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">refresh_per_second</span><span class="o">=</span><span class="mi">12</span><span class="p">,</span> <span class="n">expand</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">M</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">)):</span>
+    <span class="o">...</span>
+</code></pre></div>
+</details>
 
     </div>
 
@@ -1281,8 +1354,43 @@ isolated progress or logging behavior.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Configure runtime-scoped options before the first bar.</p>
+        <p>Set display options for this runtime, before its first bar.</p>
+<p><code>backend_options</code> are forwarded to the progress backend (Rich by default,
+e.g. <code>refresh_per_second</code>, <code>expand</code>, <code>redirect_stdout</code>); <code>create_backend</code>
+swaps the backend factory entirely. Raises if the shared display already exists.</p>
 
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mqdm.runtime.Runtime.context" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">context</span>
+
+
+<a href="#mqdm.runtime.Runtime.context" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">context</span><span class="p">(</span><span class="o">**</span><span class="n">context</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Attach key/values to every event emitted inside this block.</p>
+<p>Emitted events (<code>print</code>, <code>log</code>, task lifecycle) carry a <code>context</code> dict;
+this pushes extra fields onto it for the duration of the <code>with</code> block and
+pops them on exit. Useful for tagging output with a phase, request id, or
+similar so an <code>on_event</code> sink can group it. Nestable; see
+:meth:<code>set_base_context</code> for long-lived values like worker identity.</p>
+
+
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="k">with</span> <span class="n">runtime</span><span class="o">.</span><span class="n">context</span><span class="p">(</span><span class="n">phase</span><span class="o">=</span><span class="s2">&quot;index&quot;</span><span class="p">):</span>
+    <span class="n">mqdm</span><span class="o">.</span><span class="n">print</span><span class="p">(</span><span class="s2">&quot;scanning&quot;</span><span class="p">)</span>   <span class="c1"># event context includes phase=&quot;index&quot;</span>
+</code></pre></div>
+</details>
 
     </div>
 
@@ -1689,8 +1797,21 @@ correlates to its live events by key rather than by completion order.</p>
 
     <div class="doc doc-contents first">
 
-        <p>Install an MQDMHandler on a logger for a runtime.</p>
+        <p>Route a logger's records above the live bars (and across pool workers).</p>
+<p>Attaches an mqdm handler to <code>logger</code> (the root logger by default) so log
+output renders above the progress display instead of clobbering it, and worker
+logs are forwarded to the display owner. <code>capture_warnings='process'</code> also
+captures :mod:<code>warnings</code> in process-pool workers. See
+:meth:<code>Runtime.install_logging</code> for the full argument reference.</p>
 
+
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="n">mqdm</span><span class="o">.</span><span class="n">install_logging</span><span class="p">(</span><span class="n">level</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+<span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;started&quot;</span><span class="p">)</span>   <span class="c1"># appears above the bars</span>
+</code></pre></div>
+</details>
 
     </div>
 
@@ -1709,7 +1830,8 @@ correlates to its live events by key rather than by completion order.</p>
 
     <div class="doc doc-contents first">
 
-        <p>Remove an MQDMHandler from a logger for a runtime.</p>
+        <p>Remove mqdm's log routing from <code>logger</code> (the root logger by default).</p>
+<p>Reverses :func:<code>install_logging</code> and releases any warning capture it enabled.</p>
 
 
     </div>
