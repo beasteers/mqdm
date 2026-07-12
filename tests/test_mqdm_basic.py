@@ -315,7 +315,7 @@ def test_disabled_mqdm_is_pickleable():
 
 
 def test_runtime_backend_options_are_runtime_scoped():
-    runtime = M.Runtime(refresh_per_second=0.5, expand=True)
+    runtime = M.Runtime(backend_options={'refresh_per_second': 0.5, 'expand': True})
 
     assert runtime.backend_options["refresh_per_second"] == 0.5
     assert runtime.backend_options["expand"] is True
@@ -326,8 +326,8 @@ def test_runtime_configure_rejects_changes_after_progress_creation():
     bar = M.mqdm(total=1, runtime=runtime)
 
     try:
-        with pytest.raises(RuntimeError, match="Cannot configure runtime progress options"):
-            runtime.configure(refresh_per_second=12)
+        with pytest.raises(RuntimeError, match="Cannot configure runtime options"):
+            runtime.configure(backend_options={'refresh_per_second': 12})
     finally:
         bar.close()
 

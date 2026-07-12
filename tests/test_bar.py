@@ -68,7 +68,7 @@ def test_bar_open_close_tracks_runtime_instances():
 
 
 def test_bar_close_flushes_buffered_fast_advance():
-    runtime = M.Runtime(refresh_per_second=0.1)
+    runtime = M.Runtime(backend_options={'refresh_per_second': 0.1})
     bar = M.mqdm(total=5, runtime=runtime)
 
     try:
@@ -90,7 +90,7 @@ def test_bar_close_flushes_buffered_fast_advance():
 
 
 def test_bar_close_flush_does_not_wait_on_pause():
-    runtime = M.Runtime(refresh_per_second=0.1)
+    runtime = M.Runtime(backend_options={'refresh_per_second': 0.1})
     bar = M.mqdm(total=5, runtime=runtime)
 
     try:
@@ -175,7 +175,7 @@ def test_public_advance_increments_and_resolves_dynamic_description():
     # `arg` is given, refreshes a dynamic description via the same callback the
     # iteration path uses. A long throttle means only forced flushes land, so
     # the assertions depend on the flushed state, not on timing.
-    runtime = M.Runtime(refresh_per_second=0.1)
+    runtime = M.Runtime(backend_options={'refresh_per_second': 0.1})
     bar = M.mqdm(total=5, runtime=runtime)
 
     try:

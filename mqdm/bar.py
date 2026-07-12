@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar
 
 from multiprocessing.managers import RemoteError
 
-from .runtime import Runtime, DEFAULT_REFRESH_PER_SECOND
+from .runtime import Runtime
 from . import utils
 from .parallel.executor import _get_local
 from .utils.proxy import CommandTransportClosed
@@ -25,6 +25,8 @@ _BACKEND_CLOSED = _BACKEND_GONE + (CommandTransportClosed,)
 
 # Globally disable mqdm using environment variable. 
 DISABLED = (os.getenv("MQDM_DISABLED") or "").lower() in ("1", "true", "yes", "y")
+
+DEFAULT_REFRESH_PER_SECOND = 8
 
 T = TypeVar('T')
 TaskId: TypeAlias = int

@@ -40,7 +40,6 @@ WarningCapturePolicy: TypeAlias = "bool | Literal['process']"
 _all_runtimes: weakref.WeakSet[Runtime] = weakref.WeakSet()
 _LOCAL_EVENT_TYPE = type(threading.Event())
 _RUNTIME_CONTEXTS_KEY = "runtime_contexts"
-DEFAULT_REFRESH_PER_SECOND = 8
 
 
 class Runtime:
@@ -58,12 +57,6 @@ class Runtime:
         *,
         create_backend: Callable[..., ProgressBackend] | None = None,
         backend_options: dict[str, Any] | None = None,
-        auto_refresh: bool = True,
-        refresh_per_second: float = DEFAULT_REFRESH_PER_SECOND,
-        speed_estimate_period: float = 60.0,
-        redirect_stdout: bool = True,
-        redirect_stderr: bool = True,
-        expand: bool = False,
     ) -> None:
         self.pbar: ProgressBackend | None = None
         self.command_dispatch: QueueCommandDispatch | None = None
@@ -89,15 +82,7 @@ class Runtime:
         self.logging_config: LoggingConfig | None = None
         self.pause_wait_ttl_seconds: float = 0.5
         self._create_backend = create_backend or _default_create_backend
-        self._backend_options: dict[str, Any] = {
-            **(backend_options or {}),
-            "auto_refresh": auto_refresh,
-            "refresh_per_second": refresh_per_second,
-            "speed_estimate_period": speed_estimate_period,
-            "redirect_stdout": redirect_stdout,
-            "redirect_stderr": redirect_stderr,
-            "expand": expand,
-        }
+        self._backend_options: dict[str, Any] = dict(backend_options or {})
         _all_runtimes.add(self)
 
     @property
@@ -110,35 +95,16 @@ class Runtime:
         *,
         create_backend: Callable[..., ProgressBackend] | None = None,
         backend_options: dict[str, Any] | None = None,
-        auto_refresh: bool | None = None,
-        refresh_per_second: float | None = None,
-        speed_estimate_period: float | None = None,
-        redirect_stdout: bool | None = None,
-        redirect_stderr: bool | None = None,
-        expand: bool | None = None,
     ) -> Runtime:
-        """Configure runtime-scoped Progress options before the first bar."""
-        updates = {
-            key: value for key, value in {
-                "auto_refresh": auto_refresh,
-                "refresh_per_second": refresh_per_second,
-                "speed_estimate_period": speed_estimate_period,
-                "redirect_stdout": redirect_stdout,
-                "redirect_stderr": redirect_stderr,
-                "expand": expand,
-            }.items()
-            if value is not None
-        }
-        if backend_options:
-            updates = {**backend_options, **updates}
-        if not updates:
-            if create_backend is None:
-                return self
+        """Configure runtime-scoped options before the first bar."""
+        if backend_options is None and create_backend is None:
+            return self
         if self.pbar is not None:
-            raise RuntimeError("Cannot configure runtime progress options after the shared progress bar has been created.")
+            raise RuntimeError("Cannot configure runtime options after the shared progress bar has been created.")
         if create_backend is not None:
             self._create_backend = create_backend
-        self._backend_options.update(updates)
+        if backend_options is not None:
+            self._backend_options.update(backend_options)
         return self
 
     def __getstate__(self) -> dict[str, Any]:
@@ -502,7 +468,7 @@ def _current_runtime() -> Runtime:
 
 def configure(**kw: Any) -> Runtime:
     """Configure the implicit global runtime before its first progress bar."""
-    return _runtime.configure(**kw)
+    return _runtime.configure(backend_options=kw or None)
 
 
 class _pause_exit:

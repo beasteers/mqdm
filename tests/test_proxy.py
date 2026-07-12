@@ -173,7 +173,7 @@ def test_runtime_uses_configured_backend_factory():
     created_runtime, columns, kw = factory.calls[0]
     assert created_runtime is runtime
     assert columns is None
-    assert kw["auto_refresh"] is True
+    assert kw == {}  # no user-provided options; backend owns defaults
 
 
 def test_runtime_process_mode_rejects_non_convertible_backend():
