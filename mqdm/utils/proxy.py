@@ -254,22 +254,30 @@ def proxymethod(func=None, *, expect_reply: bool = True, owner_only: bool = Fals
             owner_only=owner_only,
             worker_only=worker_only,
         )
+    
+    
+
+    @wraps(func)
+    def _call_fn(self, *args, **kwargs):
+        self._proxy_send(name, args, kwargs)
+
+    if expect_reply:
+        @wraps(func)
+        def _call_fn(self, *args, **kwargs):
+            return self._proxy_request(name, args, kwargs)
 
     name = func.__name__
 
-    owner_restricted = owner_only or worker_only
-
-    @wraps(func)
-    def _call(self, *args, **kwargs):
-        if owner_restricted:
+    _call = _call_fn
+    if owner_only and worker_only:
+        owner_only = worker_only = False
+    if owner_only or worker_only:
+        @wraps(func)
+        def _call(self, *args, **kwargs):
             is_owner = self._proxy_is_owner()
-            if owner_only and is_owner is False:
+            if is_owner != owner_only:
                 return None
-            if worker_only and is_owner is True:
-                return None
-        if expect_reply:
-            return self._proxy_request(name, args, kwargs)
-        self._proxy_send(name, args, kwargs)
+            return _call_fn(self, *args, **kwargs)
 
     _call._is_exposed_ = True
     return _call
