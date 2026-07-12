@@ -17,7 +17,7 @@ things = [
     ("rock", 68),
     ("shoelaces", 76),
     ("moss", 84),
-    ("wire", 92),
+    ("sparrows", 92),
 ]
 
 def main():

@@ -2,18 +2,23 @@
 
 <div class="hero">
   <div class="hero-copy">
-    <p class="eyebrow">tqdm for parallel work</p>
     <h1>progress bars for threads, processes, and nested work</h1>
-    <p class="lede">
-      <code>mqdm</code> keeps the familiar <code>tqdm</code>-style loop shape,
-      but is built for code that also needs worker pools, nested progress, and
-      terminal output that does not fight the bars.
-    </p>
+
   </div>
   <div class="hero-art">
     <img src="assets/image.png" alt="mqdm progress bar illustration" />
   </div>
 </div>
+<p class="lede">
+  <code>mqdm</code> keeps the familiar <code>tqdm</code>-style loop shape,
+  but is built for code that also needs worker pools, nested progress, and
+  integrated terminal output.
+</p>
+
+<p class="lede">
+  In the spirit of tqdm, mqdm stands for "mutaqaddim" (مُتَقَدِّم) which means "the one who progresses" referring to the parallel workers that are advancing the progress. 
+  The less ret-con-y name is "multiprocessing tqdm" :)
+</p>
 
 <div id="cast-home-main" class="asciinema-player mqdm-cast" data-cast-src="assets/casts/home/main.cast" data-cols="80"></div>
 
@@ -29,11 +34,11 @@
 
 `mqdm` gives you:
 
-- `tqdm`-style progress bars
+- [`tqdm`](https://tqdm.github.io/)-style progress bars
 - worker-pool execution with `concurrent.futures` (process and thread)
 - automatic nested progress bars across parallel workers
 - progress-safe printing and logging
-- pretty progress bars, powered by `rich`
+- pretty progress bars and TUI integration, powered by [`rich`](https://rich.readthedocs.io/en/stable/introduction.html) (they also make [`textual`](https://textual.textualize.io))
 
 The same shape also seamlessly scales to parallel work:
 

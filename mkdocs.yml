@@ -60,3 +60,4 @@ extra_css:
 extra_javascript:
   - https://cdn.jsdelivr.net/npm/asciinema-player@3.8.0/dist/bundle/asciinema-player.min.js
   - javascripts/casts.js
+  - javascripts/scroll-progress.js
