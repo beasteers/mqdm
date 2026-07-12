@@ -63,6 +63,7 @@ class Runtime:
     ) -> None:
         self.pbar: ProgressBackend | None = None
         self.manager: MqdmManager | None = None
+        self.paused: bool = False
         # When set, emitted events are handed to this sink (a dict) instead of
         # being rendered to the console. Must be picklable to reach workers — a
         # multiprocessing manager Queue's ``.put`` qualifies. ``None`` keeps the
@@ -263,9 +264,9 @@ class Runtime:
 
     def pause(self, paused: bool = True) -> _pause_exit:
         pbar = self.pbar
-        prev_paused = getattr(pbar, 'paused', False)
+        prev_paused = self.paused
+        self.paused = paused
         if pbar is not None:
-            pbar.paused = paused
             if paused:
                 pbar.stop()
                 self.pause_event.clear()
