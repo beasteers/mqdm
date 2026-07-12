@@ -55,3 +55,11 @@ to render per-task fields.
 
 <div id="cast-output-columns" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/output/columns.cast"></div>
 
+You can also define your own custom column types by subclassing `rich.progress.ProgressColumn`.
+
+```python
+--8<-- "snippets/output/custom_column_type.py"
+```
+
+<div id="cast-output-custom-column-type" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/output/custom_column_type.cast"></div>
+

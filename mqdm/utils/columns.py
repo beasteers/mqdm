@@ -3,6 +3,7 @@ from rich import progress
 from rich.segment import Segment
 from rich.style import Style
 from rich.progress_bar import ProgressBar
+from rich.spinner import SPINNERS
 
 
 class TwoToneBar(ProgressBar):
