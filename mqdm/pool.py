@@ -199,9 +199,8 @@ def ipool(
         failed_results.append(_make_result(outcome))  # on_error='finish': aggregate
 
     try:
-        # Put the runtime on the right backend (a manager-backed proxy for
-        # process pools) before the top bar, so it renders on the shared display
-        # rather than a local one that then has to be converted.
+        # Put the runtime on the right backend before the top bar so process
+        # workers forward updates to the parent-owned shared display.
         executor = M.get_executor(plan.pool_mode, bar_kw=plan.worker_bar_kw, max_workers=plan.n_workers, runtime=plan.runtime)
         with mqdm(
             desc=plan.desc,

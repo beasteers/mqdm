@@ -250,3 +250,17 @@ class TransportCommandProxy(CommandProxyMixin[TRef], Generic[TRef]):
         kwargs: dict[str, Any],
     ) -> Any:
         return self._transport.request(method, args, kwargs)
+
+    def create_command_bridge(self) -> QueueCommandBridge[TRef]:
+        transport = self._transport
+        if not isinstance(transport, QueueTransport):
+            raise TypeError(
+                f"{type(self).__name__} cannot create a command bridge from "
+                f"{type(transport).__name__}."
+            )
+        ref = transport.ref
+        if ref is None:
+            raise RuntimeError(
+                f"{type(self).__name__} can only create a command bridge in the owner process."
+            )
+        return QueueCommandBridge(transport.queue, CommandDriver(ref))

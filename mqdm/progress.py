@@ -2,18 +2,14 @@ import io
 from collections import deque
 import dataclasses
 from dataclasses import dataclass
-from typing import Any, Type
+from typing import Any
 from functools import wraps
-import multiprocessing as mp
-from multiprocessing.managers import BaseProxy, SyncManager
-import multiprocessing.managers
-import rich
 from rich.console import Console
 from rich import progress
 import mqdm as M
 
 from .backend import RichTaskState, TaskState
-from .command_proxy import CommandDriver, CommandProxyMixin, QueueCommandBridge, QueueTransport, TransportCommandProxy, exposed_methods_for, proxymethod
+from .command_proxy import TransportCommandProxy, proxymethod
 
 
 class Task(progress.Task):
@@ -68,8 +64,8 @@ class Progress(progress.Progress):
 
     # ---------------------------------------------------------------------------- #
     #                           Construction / Bootstrap                           #
-    #  these hooks preserve enough init state to rebuild Progress locally or in a  #
-    #  manager-backed proxy without depending on Rich's in-process-only objects.   #
+    #  these hooks preserve enough init state to restore detached tasks and keep   #
+    #  process-safe proxy promotion independent of Rich's in-process-only state.   #
     # ---------------------------------------------------------------------------- #
 
     def __init__(self, *columns, _tasks=None, _task_index=None, _pause_event=None, silent=False, **kw):
@@ -112,7 +108,7 @@ class Progress(progress.Progress):
         """Print above the live progress display.
 
         Uses this Progress's own console so the output interleaves with the
-        live region. When called through a ``ProgressProxy`` the write is
+        live region. When called through a process-safe proxy, the write is
         routed into the process that owns the real ``Progress`` (and its Live).
         """
         self.console.print(*args, **kw)
@@ -195,31 +191,12 @@ class Progress(progress.Progress):
     # ---------------------------------------------------------------------------- #
     #                        Task Snapshot / Serialization                         #
     #  these helpers reduce Rich tasks to transportable snapshots so state can be  #
-    #  exported, restored, and mirrored in another process.                        #
+    #  exported, restored, and forwarded across process boundaries.                #
     # ---------------------------------------------------------------------------- #
 
     def dump_tasks(self) -> dict[int, RichTaskState]:
         with self._lock:
             return {task_id: self._dump_task(self._tasks[task_id]).to_dict() for task_id in self._tasks}
-
-    def dump_render_state(self):
-        # Static parts (columns/init_options) plus the current task state and the
-        # source clock, for building a mirror in another process. Pulled once.
-        return {
-            'columns': self.columns,
-            'tasks': self.dump_tasks(),
-            'init_options': self._init_options,
-            'now': self.get_time(),
-        }
-
-    def dump_live_state(self):
-        # Just the frequently-changing parts: task snapshots + source clock. This
-        # is the per-frame pull once a mirror already exists.
-        with self._lock:
-            return {
-                'now': self.get_time(),
-                'tasks': {task_id: self._dump_task(self._tasks[task_id]).to_dict() for task_id in self._tasks},
-            }
 
     def dump_task(self, task_id) -> RichTaskState:
         with self._lock:
@@ -264,98 +241,19 @@ class Progress(progress.Progress):
 
     # ---------------------------------------------------------------------------- #
     #                        Multiprocessing Backend Upgrade                       #
-    #  this section moves a local Rich-backed Progress into a manager-backed       #
-    #  proxy while preserving enough state to restart rendering on either side.    #
+    #  this section upgrades a local Rich-backed Progress into a queue-backed      #
+    #  owner-rendered proxy for process workers.                                   #
     # ---------------------------------------------------------------------------- #
 
-    def convert_proxy(self, runtime=None) -> 'ProgressProxy':
+    def convert_proxy(self, runtime=None) -> 'QueueProgressProxy':
         """Convert to a multiprocessing-safe proxy object."""
         runtime = runtime or M._current_runtime()
         started = self.live.is_started
-        tasks = self.dump_tasks()
         proxy = QueueProgressProxy.from_ref(self, runtime=runtime)
         runtime.install_command_bridge(proxy)
         if started:
             proxy.start()
         return proxy
-
-
-
-# ---------------------------------------------------------------------------- #
-#                   Multiprocessing Proxy for Progress class                   #
-# to allow sharing progress bar state across processes.
-# ---------------------------------------------------------------------------- #
-
-
-class _ManagerProxyMixin(CommandProxyMixin[Progress]):
-    """Forward commands via ``BaseProxy._callmethod``."""
-
-    def _proxy_send(self, method, args, kwargs):
-        BaseProxy._callmethod(self, method, args, kwargs)
-
-    def _proxy_request(self, method, args, kwargs):
-        return BaseProxy._callmethod(self, method, args, kwargs)
-
-
-class ProgressProxy(BaseProxy, _ManagerProxyMixin):
-    multiprocess = True
-
-    start_task = proxymethod(Progress.start_task)
-    stop_task = proxymethod(Progress.stop_task)
-    add_task = proxymethod(Progress.add_task)
-    remove_task = proxymethod(Progress.remove_task)
-    update = proxymethod(Progress.update)
-    try_update = proxymethod(Progress.try_update)
-    update_ = try_update
-    refresh = proxymethod(Progress.refresh)
-    start = proxymethod(Progress.start)
-    stop = proxymethod(Progress.stop)
-    write = proxymethod(Progress.write)
-    dump_task = proxymethod(Progress.dump_task)
-    dump_tasks = proxymethod(Progress.dump_tasks)
-    dump_render_state = proxymethod(Progress.dump_render_state)
-    dump_live_state = proxymethod(Progress.dump_live_state)
-    load_task = proxymethod(Progress.load_task)
-    new_task = proxymethod(Progress.new_task)
-    pop_task = proxymethod(Progress.pop_task)
-
-    # Local mirror Progress reused across renders (see _render_progress).
-    _mirror = None
-
-    def _render_progress(self):
-        # Build the mirror once — columns/init_options are static — then on each
-        # render pull only task state + the source clock and rebuild the (cheap)
-        # Task objects into the cached mirror. This avoids re-pickling static state
-        # and rebuilding the whole Progress/Live every frame.
-        mirror = self._mirror
-        if mirror is None:
-            state = self.dump_render_state()
-            init_options = {'expand': True, **state['init_options'], 'auto_refresh': False}
-            mirror = self._mirror = Progress(*state['columns'], **init_options)
-            # Freeze the mirror's clock to the source's `now` so elapsed/speed use
-            # the same monotonic origin as the task timestamps (the local
-            # monotonic() would be a different, meaningless origin).
-            mirror.get_time = lambda: mirror._source_now
-        else:
-            state = self.dump_live_state()
-        mirror._source_now = state['now']
-        mirror._tasks = {
-            progress.TaskID(int(task_id)): mirror._load_task(TaskSnapshot.from_dict(task), start=False)
-            for task_id, task in sorted(state['tasks'].items(), key=lambda kv: int(kv[0]))
-        }
-        return mirror
-
-    def __rich_console__(self, console, options):
-        yield self._render_progress().get_renderable()
-
-ProgressProxy._exposed_ = exposed_methods_for(ProgressProxy)
-
-multiprocessing.managers.ProgressProxy = ProgressProxy  # Can't pickle - attribute lookup ProgressProxy on multiprocessing.managers failed
-
-
-class MqdmManager(SyncManager):
-    mqdm_Progress: Type[ProgressProxy]
-MqdmManager.register('mqdm_Progress', Progress, ProgressProxy)
 
 
 class QueueProgressProxy(TransportCommandProxy[Progress]):
@@ -377,11 +275,9 @@ class QueueProgressProxy(TransportCommandProxy[Progress]):
     dump_task = proxymethod(Progress.dump_task)
     dump_tasks = proxymethod(Progress.dump_tasks)
     pop_task = proxymethod(Progress.pop_task)
-    dump_render_state = proxymethod(Progress.dump_render_state)
-    dump_live_state = proxymethod(Progress.dump_live_state)
 
     def __rich_console__(self, console, options):
-        ref = self._transport.ref
+        ref = self.ref
         if ref is None:
             raise RuntimeError("QueueProgressProxy can only render in the owner process.")
         yield ref.get_renderable()

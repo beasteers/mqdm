@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     from .bar import mqdm as MQDMBar
     from .command_proxy import QueueCommandBridge
     from .executor import T_POOL_MODE
-    from .progress import MqdmManager
 
 
 class LoggingConfig(TypedDict, total=False):
@@ -84,14 +83,13 @@ class Runtime:
         expand: bool = False,
     ) -> None:
         self.pbar: ProgressBackend | None = None
-        self.manager: MqdmManager | None = None
         self.command_bridge: QueueCommandBridge | None = None
         self.backend_factory: ProgressBackendFactory = backend_factory or RichProgressFactory()
         self.paused: bool = False
         self._context_key = f"runtime:{id(self)}"
         # When set, emitted events are handed to this sink (a dict) instead of
         # being rendered to the console. Must be picklable to reach workers — a
-        # multiprocessing manager Queue's ``.put`` qualifies. ``None`` keeps the
+        # multiprocessing queue's ``.put`` qualifies. ``None`` keeps the
         # default console behavior.
         self.on_event: Callable[[dict], Any] | None = on_event
         self.pause_event: threading.Event = threading.Event()
@@ -161,7 +159,6 @@ class Runtime:
         pbar = state.get('pbar')
         if pbar is not None and not getattr(pbar, 'multiprocess', False):
             state['pbar'] = None
-        state['manager'] = None
         state['command_bridge'] = None
         state['instances'] = OrderedDict()
         state['logging_handlers'] = None
@@ -349,7 +346,7 @@ class Runtime:
 
         Terminal output is delegated to :meth:`_write`, which routes through the
         active progress bar so it lands in whichever process owns the live
-        display (the manager process in ``pool_mode='process'``).
+        display (the parent process in ``pool_mode='process'``).
         """
         data.setdefault("context", self.get_context())
         if event_type == "print":
@@ -461,29 +458,14 @@ class Runtime:
             _release_warnings(runtime=self)
         self.logging_config = None
 
-    def get_manager(self) -> MqdmManager:
-        if self.manager is not None:
-            return self.manager
-        from .progress import MqdmManager
-
-        manager = MqdmManager()
-        manager.start()
-        self.manager = manager
-        self.pause_event = manager.Event()
-        self.pause_event.set()
-        self.shutdown_event = manager.Event()
-        self.shutdown_event.set()
-        return manager
-
     def install_command_bridge(self, pbar: ProgressBackend) -> None:
-        from .command_proxy import CommandDriver, QueueCommandBridge
         from .progress import QueueProgressProxy
 
         if not isinstance(pbar, QueueProgressProxy):
             return
         if self.command_bridge is not None:
             self.command_bridge.stop()
-        bridge = QueueCommandBridge(pbar._transport.queue, CommandDriver(pbar._transport.ref))
+        bridge = pbar.create_command_bridge()
         bridge.start()
         self.command_bridge = bridge
 
@@ -496,22 +478,10 @@ class Runtime:
         finally:
             self.command_bridge = None
 
-    def shutdown_manager(self) -> None:
-        manager = self.manager
-        if manager is None:
-            return
-        try:
-            shutdown = getattr(manager, 'shutdown', None)
-            if shutdown is not None:
-                shutdown()
-        finally:
-            self.manager = None
-
     def atexit(self) -> None:
         self.uninstall_logging()
         self.close_instances()
         self.shutdown_command_bridge()
-        self.shutdown_manager()
 
 
 _runtime = Runtime()

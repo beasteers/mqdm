@@ -283,7 +283,7 @@ def test_runtime_is_pickleable():
     restored = pickle.loads(pickle.dumps(runtime))
 
     assert isinstance(restored, M.Runtime)
-    assert restored.manager is None
+    assert restored.command_bridge is None
     assert not restored.instances
     assert restored.pause_event.is_set()
     assert restored.shutdown_event.is_set()

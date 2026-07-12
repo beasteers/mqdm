@@ -20,7 +20,7 @@ class TaskState(TypedDict, total=False):
 
 
 class RichTaskState(TaskState, total=False):
-    """Rich-specific snapshot fields used for restore and mirror rendering."""
+    """Rich-specific snapshot fields used for restore and progress snapshots."""
 
     stop_time: float | None
     finished_time: float | None
@@ -48,7 +48,7 @@ class ProgressBackend(Protocol):
     """Core runtime/backend contract used by mqdm bars.
 
     This deliberately excludes optional capabilities such as process-mode
-    promotion, Rich render mirroring, or backend-specific snapshot extensions.
+    promotion or backend-specific snapshot extensions.
     """
 
     multiprocess: bool

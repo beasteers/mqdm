@@ -18,17 +18,16 @@ In process mode, `mqdm` does not try to render a separate live display in every
 worker.
 
 Instead, it keeps one canonical `Progress` object in a `multiprocessing`
-`Manager` process and lets workers talk to it through `multiprocessing` proxy
-objects.
+parent process and lets workers talk to it through a queue-backed proxy.
 
 The important pieces are:
 
 - the parent `Runtime` owns the shared progress state
-- the first process-mode bar creates a `MqdmManager`
-- that manager hosts the real `Progress` instance
+- the first process-mode bar installs a command bridge in the parent
+- that parent-owned bridge hosts the real `Progress` instance
 - workers receive a pickled `Runtime` plus an `Initializer`
 - worker calls like `mqdm.print(...)`, `pbar.update(...)`, and nested
-  `mqdm.mqdm(...)` calls go through proxy methods back to the manager-owned
+  `mqdm.mqdm(...)` calls go through proxy methods back to the parent-owned
   `Progress`
 - only one live display is rendered, so worker output lands in a single
   coordinated terminal region

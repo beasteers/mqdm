@@ -4,10 +4,9 @@ import pytest
 from rich.console import Console
 
 import mqdm as M
-from mqdm import progress as proxy_mod
 from mqdm.backend import TaskState
 from mqdm.command_proxy import CommandDriver, CommandProxyMixin, LocalTransport, QueueCommandBridge, QueueTransport, TransportCommandProxy, exposed_methods_for, proxymethod
-from mqdm.progress import Progress, ProgressProxy, QueueProgressProxy
+from mqdm.progress import Progress, QueueProgressProxy
 
 
 def test_load_task_restores_finished_metadata():
@@ -183,88 +182,15 @@ def test_runtime_process_mode_rejects_non_convertible_backend():
         runtime.get_pbar(pool_mode="process")
 
 
-def test_progress_proxy_rich_console_uses_renderable_group():
+def test_queue_progress_proxy_rich_console_uses_owner_renderable():
     progress = Progress(disable=True)
     progress.add_task("demo", total=1, completed=0)
-    proxy = SimpleNamespace(_render_progress=lambda: progress)
+    proxy = QueueProgressProxy.from_ref(progress)
 
-    renderables = list(ProgressProxy.__rich_console__(proxy, Console(), None))
+    renderables = list(proxy.__rich_console__(Console(), None))
 
     assert len(renderables) == 1
     assert hasattr(renderables[0], "__rich_console__")
-
-
-def _task_snapshot(**kw):
-    from mqdm.progress import TaskSnapshot
-
-    defaults = dict(
-        id=0, description="demo", total=100, completed=0, visible=True, fields={},
-        start_time=None, stop_time=None, finished_time=None, finished_speed=None, _progress=[],
-    )
-    defaults.update(kw)
-    return TaskSnapshot(**defaults).to_dict()
-
-
-class _FakeProgressProxy:
-    """Exercises ProgressProxy._render_progress without a live manager."""
-
-    _mirror = None
-    _render_progress = ProgressProxy._render_progress
-
-    def __init__(self, render_state, live_states):
-        self._render_state = render_state
-        self._live_states = list(live_states)
-        self.render_calls = 0
-        self.live_calls = 0
-
-    def dump_render_state(self):
-        self.render_calls += 1
-        return self._render_state
-
-    def dump_live_state(self):
-        state = self._live_states[min(self.live_calls, len(self._live_states) - 1)]
-        self.live_calls += 1
-        return state
-
-
-def test_render_progress_caches_mirror_and_reflects_updates():
-    render_state = {
-        "columns": ["[progress.description]{task.description}"],
-        "init_options": {},
-        "now": 1000.0,
-        "tasks": {0: _task_snapshot(start_time=999.0, completed=0)},
-    }
-    live_state = {"now": 1002.0, "tasks": {0: _task_snapshot(start_time=999.0, completed=50)}}
-    proxy = _FakeProgressProxy(render_state, [live_state])
-
-    mirror_a = proxy._render_progress()
-    mirror_b = proxy._render_progress()
-
-    # Static state pulled once; subsequent frames only pull live task state.
-    assert mirror_a is mirror_b
-    assert proxy.render_calls == 1
-    assert proxy.live_calls == 1
-
-    task = mirror_b._tasks[0]
-    assert task.completed == 50
-    # elapsed uses the source clock (now - start_time), not the local monotonic().
-    assert task.elapsed == 1002.0 - 999.0
-
-
-def test_render_progress_drops_removed_tasks():
-    render_state = {
-        "columns": ["x"],
-        "init_options": {},
-        "now": 10.0,
-        "tasks": {0: _task_snapshot(id=0), 1: _task_snapshot(id=1)},
-    }
-    proxy = _FakeProgressProxy(render_state, [{"now": 11.0, "tasks": {0: _task_snapshot(id=0)}}])
-
-    first = proxy._render_progress()
-    assert set(first._tasks) == {0, 1}
-
-    second = proxy._render_progress()
-    assert set(second._tasks) == {0}
 
 
 def test_progress_silent_uses_in_memory_console():
@@ -297,7 +223,7 @@ def test_queue_command_bridge_replays_commands():
     q = __import__("queue").Queue()
     bridge = QueueCommandBridge(q, CommandDriver(target))
     bridge.start()
-    q.put(("write", ("hello",), {"markup": False}))
+    q.put(("send", "write", ("hello",), {"markup": False}))
     import time
     deadline = time.time() + 1
     while not target.calls and time.time() < deadline:
@@ -355,6 +281,13 @@ def test_command_proxy_mixin_from_ref_requires_subclass_override():
 
     with pytest.raises(NotImplementedError, match="must be implemented"):
         Proxy.from_ref(object())
+
+
+def test_transport_command_proxy_create_command_bridge_requires_owner_ref():
+    proxy = QueueProgressProxy(QueueTransport(__import__("queue").SimpleQueue()))
+
+    with pytest.raises(RuntimeError, match="owner process"):
+        proxy.create_command_bridge()
 
 
 def test_transport_command_proxy_dispatches_send_and_request():
