@@ -90,6 +90,8 @@ class Progress(progress.Progress):
     # ---------------------------------------------------------------------------- #
 
     def __init__(self, *, columns=None, _tasks=None, _task_index=None, _pause_event=None, silent=False, **kw):
+        if columns is None:
+            columns = self.default_progress_columns()
         self._init_options = dict(kw)
         if silent:
             self._init_options['silent'] = True
