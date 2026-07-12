@@ -28,7 +28,7 @@ for folder in M.mqdm(["cats", "clouds", "notes"], desc="indexing"):
 
 ## Docs
 
-The main documentation now lives in the MkDocs site under [docs](docs/index.md).
+The main documentation now lives in the MkDocs site under [docs](https://beasteers.readthedocs.io/mqdm).
 
 Local preview:
 
