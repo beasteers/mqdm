@@ -37,7 +37,7 @@ def test_convert_proxy_preserves_existing_tasks_in_shadow_state():
     snapshot = progress.dump_tasks()
     runtime = M.Runtime()
 
-    proxy = progress.convert_proxy(runtime=runtime)
+    proxy = progress.convert_proxy(command_bridge=runtime._ensure_command_bridge())
 
     assert isinstance(proxy, QueueProgressProxy)
     assert proxy.dump_tasks() == snapshot
@@ -98,8 +98,8 @@ def test_runtime_get_pbar_converts_with_owning_runtime(monkeypatch):
         def start(self):
             return None
 
-    def fake_convert_proxy(*, runtime=None):
-        captured["runtime"] = runtime
+    def fake_convert_proxy(*, command_bridge=None):
+        captured["command_bridge"] = command_bridge
         return Proxy()
 
     monkeypatch.setattr(progress, "convert_proxy", fake_convert_proxy)
@@ -108,7 +108,7 @@ def test_runtime_get_pbar_converts_with_owning_runtime(monkeypatch):
 
     assert isinstance(proxy, Proxy)
     assert runtime.pbar is proxy
-    assert captured["runtime"] is runtime
+    assert captured["command_bridge"] is runtime.command_bridge
 
 
 class _MinimalBackend:
@@ -210,8 +210,8 @@ def test_queue_transport_remote_queues_send_commands():
     transport.send("refresh", (), {})
     transport.send("write", ("hello",), {})
 
-    assert q.get() == ("send", "refresh", (), {})
-    assert q.get() == ("send", "write", ("hello",), {})
+    assert q.get() == ("send", None, "refresh", (), {})
+    assert q.get() == ("send", None, "write", ("hello",), {})
 
 
 def test_queue_command_bridge_replays_commands():
@@ -224,7 +224,7 @@ def test_queue_command_bridge_replays_commands():
     q = __import__("queue").Queue()
     bridge = QueueCommandBridge(q, CommandDriver(target))
     bridge.start()
-    q.put(("send", "write", ("hello",), {"markup": False}))
+    q.put(("send", None, "write", ("hello",), {"markup": False}))
     import time
     deadline = time.time() + 1
     while not target.calls and time.time() < deadline:
@@ -232,6 +232,31 @@ def test_queue_command_bridge_replays_commands():
     bridge.stop()
 
     assert target.calls == [(("hello",), {"markup": False})]
+
+
+def test_queue_command_bridge_routes_multiple_targets_over_one_queue():
+    first = SimpleNamespace(calls=[])
+    second = SimpleNamespace(calls=[])
+
+    first.write = lambda *args, **kwargs: first.calls.append((args, kwargs))
+    second.write = lambda *args, **kwargs: second.calls.append((args, kwargs))
+
+    q = __import__("queue").Queue()
+    bridge = QueueCommandBridge(q)
+    bridge.register(first, target_id="first")
+    bridge.register(second, target_id="second")
+    bridge.start()
+    q.put(("send", "first", "write", ("one",), {"markup": False}))
+    q.put(("send", "second", "write", ("two",), {"markup": True}))
+
+    import time
+    deadline = time.time() + 1
+    while (not first.calls or not second.calls) and time.time() < deadline:
+        time.sleep(0.01)
+    bridge.stop()
+
+    assert first.calls == [(("one",), {"markup": False})]
+    assert second.calls == [(("two",), {"markup": True})]
 
 
 def test_command_proxy_owner_only_and_worker_only_flags():
@@ -289,6 +314,19 @@ def test_transport_command_proxy_create_command_bridge_requires_owner_ref():
 
     with pytest.raises(RuntimeError, match="owner process"):
         proxy.create_command_bridge()
+
+
+def test_transport_command_proxy_from_ref_uses_shared_command_bridge():
+    runtime = M.Runtime()
+    progress = Progress(disable=True)
+    bridge = runtime._ensure_command_bridge()
+
+    proxy = QueueProgressProxy.from_ref(progress, command_bridge=bridge)
+
+    assert runtime.command_bridge is not None
+    assert runtime.command_bridge.queue is proxy._transport.queue
+    assert proxy._transport.target_id == 0
+    assert 0 in runtime.command_bridge.drivers
 
 
 def test_transport_command_proxy_dispatches_send_and_request():

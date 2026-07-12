@@ -224,14 +224,22 @@ class Runtime:
         """Construct a backend instance using the configured factory."""
         return self.backend_factory.create(runtime=self, columns=columns, **kw)
 
+    def _ensure_command_bridge(self) -> QueueCommandBridge:
+        from .command_proxy import QueueCommandBridge
+
+        bridge = self.command_bridge
+        if bridge is not None:
+            return bridge
+        bridge = self.command_bridge = QueueCommandBridge()
+        bridge.start()
+        return bridge
+
     def _ensure_process_backend(self, pbar: ProgressBackend) -> ProgressBackend:
         """Promote a local backend when process mode requires IPC-safe access."""
         if pbar.multiprocess:
             return pbar
         if isinstance(pbar, ProxyConvertibleBackend):
-            proxy = pbar.convert_proxy(runtime=self)
-            self.install_command_bridge(proxy)
-            return proxy
+            return pbar.convert_proxy(command_bridge=self._ensure_command_bridge())
         raise RuntimeError(
             f"Progress backend {type(pbar).__name__!r} does not support process mode promotion."
         )
@@ -459,18 +467,6 @@ class Runtime:
         if self.capture_warnings:
             _release_warnings(runtime=self)
         self.logging_config = None
-
-    def install_command_bridge(self, pbar: ProgressBackend) -> None:
-        from .command_proxy import TransportCommandProxy
-
-        if not isinstance(pbar, TransportCommandProxy):
-            print("Provided pbar is not a TransportCommandProxy.")
-            return
-        if self.command_bridge is not None:
-            self.command_bridge.stop()
-        bridge = pbar.create_command_bridge()
-        bridge.start()
-        self.command_bridge = bridge
 
     def shutdown_command_bridge(self) -> None:
         bridge = self.command_bridge

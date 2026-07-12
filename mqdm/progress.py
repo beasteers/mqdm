@@ -245,11 +245,9 @@ class Progress(progress.Progress):
     #  owner-rendered proxy for process workers.                                   #
     # ---------------------------------------------------------------------------- #
 
-    def convert_proxy(self, runtime=None) -> 'QueueProgressProxy':
+    def convert_proxy(self, command_bridge=None) -> 'QueueProgressProxy':
         """Convert to a multiprocessing-safe proxy object."""
-        runtime = runtime or M._current_runtime()
-        proxy = QueueProgressProxy.from_ref(self, runtime=runtime)
-        return proxy
+        return QueueProgressProxy.from_ref(self, command_bridge=command_bridge)
 
 
 class QueueProgressProxy(TransportCommandProxy[Progress]):

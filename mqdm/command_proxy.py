@@ -59,10 +59,12 @@ class QueueTransport(Generic[TRef]):
         queue: Any,
         *,
         ref: TRef | None = None,
+        target_id: Any = None,
         owner_pid: int | None = None,
     ) -> None:
         self.queue = queue
         self.ref = ref
+        self.target_id = target_id
         self.owner_pid = os.getpid() if owner_pid is None else owner_pid
 
     def __getstate__(self) -> dict[str, Any]:
@@ -80,14 +82,14 @@ class QueueTransport(Generic[TRef]):
         if self._is_owner():
             getattr(self.ref, method)(*args, **kwargs)
             return
-        self.queue.put(("send", method, args, kwargs))
+        self.queue.put(("send", self.target_id, method, args, kwargs))
 
     def request(self, method: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
         if self._is_owner():
             return getattr(self.ref, method)(*args, **kwargs)
         recv_end, send_end = mp.Pipe(duplex=False)
         try:
-            self.queue.put(("request", method, args, kwargs, send_end))
+            self.queue.put(("request", self.target_id, method, args, kwargs, send_end))
             ok, payload = recv_end.recv()
             if ok:
                 return payload
@@ -98,13 +100,38 @@ class QueueTransport(Generic[TRef]):
 
 
 class QueueCommandBridge(Generic[TRef]):
-    """Drain queued commands and replay them onto a local target in a thread."""
+    """Drain queued commands and replay them onto registered local targets."""
 
-    def __init__(self, queue: Any, driver: CommandDriver[TRef]) -> None:
-        self.queue = queue
-        self.driver = driver
+    def __init__(self, queue: Any | None = None, driver: CommandDriver[TRef] | None = None, *, target_id: Any = None) -> None:
+        self.queue = mp.Queue() if queue is None else queue
+        self.drivers: dict[Any, CommandDriver[Any]] = {}
+        self._next_target_id = 0
+        if driver is not None:
+            self.drivers[target_id] = driver
+            if isinstance(target_id, int):
+                self._next_target_id = max(self._next_target_id, target_id + 1)
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+
+    def register(self, target: TRef | CommandDriver[TRef], *, target_id: Any = None) -> Any:
+        if target_id is None:
+            target_id = self._next_target_id
+            self._next_target_id += 1
+        elif isinstance(target_id, int):
+            self._next_target_id = max(self._next_target_id, target_id + 1)
+        driver = target if isinstance(target, CommandDriver) else CommandDriver(target)
+        self.drivers[target_id] = driver
+        return target_id
+
+    def unregister(self, target_id: Any) -> None:
+        self.drivers.pop(target_id, None)
+
+    def _dispatch(self, target_id: Any, method: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+        try:
+            driver = self.drivers[target_id]
+        except KeyError as exc:
+            raise KeyError(f"No command bridge target registered for {target_id!r}.") from exc
+        return driver.dispatch(method, args, kwargs)
 
     def start(self) -> None:
         if self._thread is not None:
@@ -123,13 +150,13 @@ class QueueCommandBridge(Generic[TRef]):
                 break
             kind = item[0]
             if kind == "send":
-                _, method, args, kwargs = item
-                self.driver.dispatch(method, args, kwargs)
+                _, target_id, method, args, kwargs = item
+                self._dispatch(target_id, method, args, kwargs)
                 continue
             if kind == "request":
-                _, method, args, kwargs, reply = item
+                _, target_id, method, args, kwargs, reply = item
                 try:
-                    reply.send((True, self.driver.dispatch(method, args, kwargs)))
+                    reply.send((True, self._dispatch(target_id, method, args, kwargs)))
                 except BaseException as exc:
                     reply.send((False, exc))
                 finally:
@@ -187,7 +214,7 @@ class CommandProxyMixin(Generic[TRef]):
     """Base mixin for proxies that forward method calls as commands."""
 
     @classmethod
-    def from_ref(cls: type[TProxy], ref: TRef, *, runtime=None) -> TProxy:
+    def from_ref(cls: type[TProxy], ref: TRef, *, command_bridge=None) -> TProxy:
         raise NotImplementedError(f"{cls.__name__}.from_ref() must be implemented")
 
     @property
@@ -221,7 +248,10 @@ class TransportCommandProxy(CommandProxyMixin[TRef], Generic[TRef]):
         self._transport = transport
 
     @classmethod
-    def from_ref(cls: type[TTransportProxy], ref: TRef, *, runtime=None) -> TTransportProxy:
+    def from_ref(cls: type[TTransportProxy], ref: TRef, *, command_bridge=None) -> TTransportProxy:
+        if command_bridge is not None:
+            target_id = command_bridge.register(ref)
+            return cls(QueueTransport(command_bridge.queue, ref=ref, target_id=target_id))
         return cls(QueueTransport(mp.Queue(), ref=ref))
 
     @property
@@ -259,4 +289,4 @@ class TransportCommandProxy(CommandProxyMixin[TRef], Generic[TRef]):
             raise RuntimeError(
                 f"{type(self).__name__} can only create a command bridge in the owner process."
             )
-        return QueueCommandBridge(transport.queue, CommandDriver(ref))
+        return QueueCommandBridge(transport.queue, CommandDriver(ref), target_id=transport.target_id)
