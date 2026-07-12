@@ -13,7 +13,7 @@ progress state, logging, and runtime-scoped configuration.
       show_root_heading: true
       show_source: false
 
-::: mqdm.pool.Result
+::: mqdm.Result
     options:
       show_root_heading: true
       show_source: false

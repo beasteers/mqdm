@@ -10,7 +10,7 @@ The pattern is:
 
 - create a normal `mqdm` bar in the parent
 - update it from the parent as work completes
-- in order for worker processes to have their own `mqdm` output or nested bars, you need to provide an initializer e.g. `mqdm.executor.Initializer`
+- in order for worker processes to have their own `mqdm` output or nested bars, you need to provide an initializer e.g. `mqdm.Initializer`
 
 ## How process cross-talk works
 
@@ -81,7 +81,7 @@ def run_with_mqdm_pool(xs, n_workers=4):
 
 ```python
 import mqdm
-from mqdm.executor import Initializer
+from mqdm import Initializer
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
@@ -121,7 +121,7 @@ def run_with_thread_pool(xs, n_workers=8):
 
 ```python
 import mqdm
-from mqdm.executor import Initializer
+from mqdm import Initializer
 
 from multiprocessing import Pool
 
@@ -141,7 +141,7 @@ def run_with_mp_pool(xs, n_workers=4):
 
 ```python
 import mqdm
-from mqdm.executor import Initializer
+from mqdm import Initializer
 
 from joblib import Parallel, delayed
 

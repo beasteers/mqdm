@@ -75,7 +75,7 @@ from . import events
 # ----------------------------------- Core ----------------------------------- #
 
 from .bar import mqdm
-from .parallel.pool import ipool, pool, PoolError
+from .parallel.pool import ipool, pool, PoolError, Result
 from .parallel.apool import aipool, apool
 
 # ----------------------------- Development utils ---------------------------- #
