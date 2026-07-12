@@ -1,12 +1,13 @@
 import asyncio
 import mqdm as M
+from mqdm.runtime import _runtime
 import pickle
 import pytest
 import time
 
 
 def _runtime_worker(x):
-    runtime_is_custom = M._current_runtime() is not M._runtime
+    runtime_is_custom = M._current_runtime() is not _runtime
     for _ in M.mqdm(range(1), disable=True):
         pass
     return runtime_is_custom, x + 1
@@ -270,7 +271,7 @@ def test_mqdm_can_use_custom_runtime():
     try:
         assert bar.runtime is runtime
         assert runtime.pbar is not None
-        assert M._runtime is not runtime
+        assert _runtime is not runtime
     finally:
         bar.close()
 

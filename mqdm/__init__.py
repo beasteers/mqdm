@@ -1,5 +1,5 @@
 import mqdm as M  # self
-from .runtime import Runtime, _current_runtime, _runtime, configure
+from .runtime import Runtime, _current_runtime, configure
 
 
 def sustain():
