@@ -57,7 +57,7 @@ class Runtime:
         on_event: Callable[[EventEnvelope], Any] | None = None,
         *,
         create_backend: Callable[..., ProgressBackend] | None = None,
-        progress_kw: dict[str, Any] | None = None,
+        backend_options: dict[str, Any] | None = None,
         auto_refresh: bool = True,
         refresh_per_second: float = DEFAULT_REFRESH_PER_SECOND,
         speed_estimate_period: float = 60.0,
@@ -84,12 +84,13 @@ class Runtime:
         self.instances: OrderedDict[int, ReferenceType[MQDMBar]] = OrderedDict()
         self.logging_handlers: weakref.WeakSet[MQDMHandler] = weakref.WeakSet()
         self._sustain_depth: int = 0
+        self._last_pause_exit: _pause_exit | None = None
         self.capture_warnings: bool = False
         self.logging_config: LoggingConfig | None = None
         self.pause_wait_ttl_seconds: float = 0.5
         self._create_backend = create_backend or _default_create_backend
-        self._backend_kw: dict[str, Any] = {
-            **(progress_kw or {}),
+        self._backend_options: dict[str, Any] = {
+            **(backend_options or {}),
             "auto_refresh": auto_refresh,
             "refresh_per_second": refresh_per_second,
             "speed_estimate_period": speed_estimate_period,
@@ -100,15 +101,15 @@ class Runtime:
         _all_runtimes.add(self)
 
     @property
-    def progress_options(self) -> dict[str, Any]:
+    def backend_options(self) -> dict[str, Any]:
         """Runtime-scoped options used when creating the shared Progress."""
-        return dict(self._backend_kw)
+        return dict(self._backend_options)
 
     def configure(
         self,
         *,
         create_backend: Callable[..., ProgressBackend] | None = None,
-        progress_kw: dict[str, Any] | None = None,
+        backend_options: dict[str, Any] | None = None,
         auto_refresh: bool | None = None,
         refresh_per_second: float | None = None,
         speed_estimate_period: float | None = None,
@@ -128,8 +129,8 @@ class Runtime:
             }.items()
             if value is not None
         }
-        if progress_kw:
-            updates = {**progress_kw, **updates}
+        if backend_options:
+            updates = {**backend_options, **updates}
         if not updates:
             if create_backend is None:
                 return self
@@ -137,7 +138,7 @@ class Runtime:
             raise RuntimeError("Cannot configure runtime progress options after the shared progress bar has been created.")
         if create_backend is not None:
             self._create_backend = create_backend
-        self._backend_kw.update(updates)
+        self._backend_options.update(updates)
         return self
 
     def __getstate__(self) -> dict[str, Any]:
@@ -232,7 +233,7 @@ class Runtime:
     def get_pbar(self, pool_mode: T_POOL_MODE = None, **kw: Any) -> ProgressBackend:
         pbar = self.pbar
         if pbar is None:
-            pbar = self.pbar = self.new_pbar(**{**self._backend_kw, **kw})
+            pbar = self.pbar = self.new_pbar(**{**self._backend_options, **kw})
         if pool_mode == 'process':
             pbar = self.pbar = self._ensure_process_backend(pbar)
         return pbar
@@ -248,7 +249,7 @@ class Runtime:
                 self.pbar.stop()
             self.pbar = None
             self.shutdown_command_dispatch()
-        if self.instances:
+        elif self.instances:
             if strict:
                 raise RuntimeError("Cannot clear progress bar while instances are still active.")
         elif not utils.is_main_process():
@@ -300,7 +301,7 @@ class Runtime:
             else:
                 pbar.start()
                 self.pause_event.set()
-        return _pause_exit(prev_paused)
+        return _pause_exit(prev_paused, self)
     
     @contextmanager
     def sustain(self):
@@ -505,18 +506,18 @@ def configure(**kw: Any) -> Runtime:
 
 
 class _pause_exit:
-    last: _pause_exit | None = None
 
-    def __init__(self, prev_paused: bool) -> None:
-        self.prev_paused = prev_paused
-        _pause_exit.last = self
+    def __init__(self, prev_paused: bool, runtime: Runtime) -> None:
+        self._prev_paused = prev_paused
+        self._runtime = runtime
+        runtime._last_pause_exit = self
 
     def __enter__(self) -> None:
         pass
 
     def __exit__(self, c: object, exc: BaseException | None, t: object) -> None:
-        if not exc and not self.prev_paused and self is _pause_exit.last:
-            _current_runtime().pause(False)
+        if not exc and not self._prev_paused and self is self._runtime._last_pause_exit:
+            self._runtime.pause(False)
 
 
 def _atexit_runtimes() -> None:

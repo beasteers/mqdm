@@ -283,7 +283,7 @@ def _pool_thread(
             squeeze_=False,
             bar_kw={
                 "start": False,
-                "progress_kw": {
+                "backend_options": {
                     "auto_refresh": False,
                     "redirect_stdout": False,
                     "redirect_stderr": False,

@@ -156,7 +156,7 @@ class _MinimalFactory:
     def __init__(self):
         self.calls = []
 
-    def __call__(self, *, runtime, columns, **kw):
+    def __call__(self, *, runtime, columns=None, **kw):
         self.calls.append((runtime, columns, kw))
         return _MinimalBackend()
 

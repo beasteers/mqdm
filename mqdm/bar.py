@@ -285,7 +285,7 @@ class mqdm(Generic[T]):
         D: dict[str, Any] = self.__dict__
         disable = self.disable
         ttl_pause_wait = utils.fn_throttle(self.runtime.pause_event.wait, self.runtime.pause_wait_ttl_seconds)
-        delta = 1 / (self.runtime.progress_options.get('refresh_per_second') or DEFAULT_REFRESH_PER_SECOND)
+        delta = 1 / (self.runtime.backend_options.get('refresh_per_second') or DEFAULT_REFRESH_PER_SECOND)
         runtime = self.runtime
         task_id = self.task_id
 

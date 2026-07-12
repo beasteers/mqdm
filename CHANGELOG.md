@@ -29,7 +29,7 @@ should see better behavior in nested, threaded, and multiprocess workloads witho
 
 In `1.2.3`, `mqdm.mqdm(...)` accepted options such as:
 
-- `progress_kw`
+- `backend_options`
 - `auto_refresh`
 - `refresh_per_second`
 - `speed_estimate_period`

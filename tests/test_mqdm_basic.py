@@ -314,11 +314,11 @@ def test_disabled_mqdm_is_pickleable():
     assert restored._fast_advance is None
 
 
-def test_runtime_progress_options_are_runtime_scoped():
+def test_runtime_backend_options_are_runtime_scoped():
     runtime = M.Runtime(refresh_per_second=0.5, expand=True)
 
-    assert runtime.progress_options["refresh_per_second"] == 0.5
-    assert runtime.progress_options["expand"] is True
+    assert runtime.backend_options["refresh_per_second"] == 0.5
+    assert runtime.backend_options["expand"] is True
 
 
 def test_runtime_configure_rejects_changes_after_progress_creation():
