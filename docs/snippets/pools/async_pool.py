@@ -3,18 +3,19 @@ import mqdm
 
 
 async def fetch_one(i, delay=0.05):
-    await asyncio.sleep(delay)
+    n = i * (1 if i%2 else -1) # variety
+    for _ in mqdm.mqdm(range(50 + n), desc=f"fetching {i}", leave=False):
+        await asyncio.sleep(delay)
     return i * 10
 
 
 async def main():
-    results = await mqdm.apool(
+    await mqdm.apool(
         fetch_one,
-        range(5),
+        range(10),
         desc="fetching",
         n_workers=3,
     )
-    mqdm.print(results)
 
 
 asyncio.run(main())
