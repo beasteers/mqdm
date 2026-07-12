@@ -2,7 +2,7 @@ import io
 from collections import deque
 import dataclasses
 from dataclasses import dataclass
-from typing import Type
+from typing import Any, Type
 from functools import wraps
 import multiprocessing as mp
 from multiprocessing.managers import BaseProxy, SyncManager
@@ -13,6 +13,7 @@ from rich import progress
 import mqdm as M
 
 from .backend import RichTaskState, TaskState
+from .command_proxy import CommandDriver, CommandProxyMixin, QueueCommandBridge, QueueTransport, TransportCommandProxy, exposed_methods_for, proxymethod
 
 
 class Task(progress.Task):
@@ -268,30 +269,12 @@ class Progress(progress.Progress):
     # ---------------------------------------------------------------------------- #
 
     def convert_proxy(self, runtime=None) -> 'ProgressProxy':
-        """Convert to a multiprocessing proxy object so methods can be called in another process."""
+        """Convert to a multiprocessing-safe proxy object."""
         runtime = runtime or M._current_runtime()
         started = self.live.is_started
         tasks = self.dump_tasks()
-        for task_id in tasks:
-            self.remove_task(task_id)
-        started or self.start()
-        self.refresh()
-        self.stop()
-
-        try:
-            proxy = runtime.get_manager().mqdm_Progress(
-                *self.columns,
-                _tasks=tasks,
-                _task_index=self._task_index,
-                **self._init_options,
-            )
-        except Exception:
-            for task_id in sorted(tasks):
-                self.load_task(tasks[task_id], start=False)
-            if started:
-                self.start()
-            raise
-        proxy.multiprocess = True
+        proxy = QueueProgressProxy.from_ref(self, runtime=runtime)
+        runtime.install_command_bridge(proxy)
         if started:
             proxy.start()
         return proxy
@@ -304,18 +287,17 @@ class Progress(progress.Progress):
 # ---------------------------------------------------------------------------- #
 
 
+class _ManagerProxyMixin(CommandProxyMixin[Progress]):
+    """Forward commands via ``BaseProxy._callmethod``."""
+
+    def _proxy_send(self, method, args, kwargs):
+        BaseProxy._callmethod(self, method, args, kwargs)
+
+    def _proxy_request(self, method, args, kwargs):
+        return BaseProxy._callmethod(self, method, args, kwargs)
 
 
-def proxymethod(func):
-    name = func.__name__
-    @wraps(func)
-    def _call(self, *a, **kw):
-        return self._callmethod(name, a, kw)
-    _call._is_exposed_ = True
-    return _call
-
-
-class ProgressProxy(BaseProxy):
+class ProgressProxy(BaseProxy, _ManagerProxyMixin):
     multiprocess = True
 
     start_task = proxymethod(Progress.start_task)
@@ -366,7 +348,7 @@ class ProgressProxy(BaseProxy):
     def __rich_console__(self, console, options):
         yield self._render_progress().get_renderable()
 
-ProgressProxy._exposed_ = tuple(k for k, v in ProgressProxy.__dict__.items() if getattr(v, '_is_exposed_', False))
+ProgressProxy._exposed_ = exposed_methods_for(ProgressProxy)
 
 multiprocessing.managers.ProgressProxy = ProgressProxy  # Can't pickle - attribute lookup ProgressProxy on multiprocessing.managers failed
 
@@ -374,3 +356,32 @@ multiprocessing.managers.ProgressProxy = ProgressProxy  # Can't pickle - attribu
 class MqdmManager(SyncManager):
     mqdm_Progress: Type[ProgressProxy]
 MqdmManager.register('mqdm_Progress', Progress, ProgressProxy)
+
+
+class QueueProgressProxy(TransportCommandProxy[Progress]):
+    multiprocess = True
+
+    start = proxymethod(Progress.start, expect_reply=False, owner_only=True)
+    stop = proxymethod(Progress.stop, expect_reply=False, owner_only=True)
+    refresh = proxymethod(Progress.refresh, expect_reply=False, owner_only=True)
+    write = proxymethod(Progress.write, expect_reply=False)
+    add_task = proxymethod(Progress.add_task)
+    new_task = proxymethod(Progress.new_task)
+    update = proxymethod(Progress.update, expect_reply=False)
+    try_update = proxymethod(Progress.try_update, expect_reply=False)
+    update_ = try_update
+    start_task = proxymethod(Progress.start_task, expect_reply=False)
+    stop_task = proxymethod(Progress.stop_task, expect_reply=False)
+    remove_task = proxymethod(Progress.remove_task, expect_reply=False)
+    load_task = proxymethod(Progress.load_task, expect_reply=False)
+    dump_task = proxymethod(Progress.dump_task)
+    dump_tasks = proxymethod(Progress.dump_tasks)
+    pop_task = proxymethod(Progress.pop_task)
+    dump_render_state = proxymethod(Progress.dump_render_state)
+    dump_live_state = proxymethod(Progress.dump_live_state)
+
+    def __rich_console__(self, console, options):
+        ref = self._transport.ref
+        if ref is None:
+            raise RuntimeError("QueueProgressProxy can only render in the owner process.")
+        yield ref.get_renderable()

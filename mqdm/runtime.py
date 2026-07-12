@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
     from ._logging import MQDMHandler
     from .bar import mqdm as MQDMBar
+    from .command_proxy import QueueCommandBridge
     from .executor import T_POOL_MODE
     from .progress import MqdmManager
 
@@ -84,6 +85,7 @@ class Runtime:
     ) -> None:
         self.pbar: ProgressBackend | None = None
         self.manager: MqdmManager | None = None
+        self.command_bridge: QueueCommandBridge | None = None
         self.backend_factory: ProgressBackendFactory = backend_factory or RichProgressFactory()
         self.paused: bool = False
         self._context_key = f"runtime:{id(self)}"
@@ -160,6 +162,7 @@ class Runtime:
         if pbar is not None and not getattr(pbar, 'multiprocess', False):
             state['pbar'] = None
         state['manager'] = None
+        state['command_bridge'] = None
         state['instances'] = OrderedDict()
         state['logging_handlers'] = None
         # Warning capture is process-local state and must be reinstalled in workers.
@@ -472,6 +475,27 @@ class Runtime:
         self.shutdown_event.set()
         return manager
 
+    def install_command_bridge(self, pbar: ProgressBackend) -> None:
+        from .command_proxy import CommandDriver, QueueCommandBridge
+        from .progress import QueueProgressProxy
+
+        if not isinstance(pbar, QueueProgressProxy):
+            return
+        if self.command_bridge is not None:
+            self.command_bridge.stop()
+        bridge = QueueCommandBridge(pbar._transport.queue, CommandDriver(pbar._transport.ref))
+        bridge.start()
+        self.command_bridge = bridge
+
+    def shutdown_command_bridge(self) -> None:
+        bridge = self.command_bridge
+        if bridge is None:
+            return
+        try:
+            bridge.stop()
+        finally:
+            self.command_bridge = None
+
     def shutdown_manager(self) -> None:
         manager = self.manager
         if manager is None:
@@ -486,6 +510,7 @@ class Runtime:
     def atexit(self) -> None:
         self.uninstall_logging()
         self.close_instances()
+        self.shutdown_command_bridge()
         self.shutdown_manager()
 
 

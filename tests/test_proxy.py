@@ -6,7 +6,8 @@ from rich.console import Console
 import mqdm as M
 from mqdm import progress as proxy_mod
 from mqdm.backend import TaskState
-from mqdm.progress import Progress, ProgressProxy
+from mqdm.command_proxy import CommandDriver, CommandProxyMixin, LocalTransport, QueueCommandBridge, QueueTransport, TransportCommandProxy, exposed_methods_for, proxymethod
+from mqdm.progress import Progress, ProgressProxy, QueueProgressProxy
 
 
 def test_load_task_restores_finished_metadata():
@@ -30,24 +31,18 @@ def test_load_task_restores_finished_metadata():
     assert restored_task.finished_speed == 12.5
 
 
-def test_convert_proxy_restores_local_tasks_after_manager_failure(monkeypatch):
+def test_convert_proxy_preserves_existing_tasks_in_shadow_state():
     progress = Progress(disable=True)
     first = progress.add_task("one", total=2, start=False)
     second = progress.add_task("two", total=4, start=True, completed=1, transient=True)
     snapshot = progress.dump_tasks()
+    runtime = M.Runtime()
 
-    class BrokenManager:
-        def mqdm_Progress(self, *args, **kwargs):
-            raise RuntimeError("boom")
+    proxy = progress.convert_proxy(runtime=runtime)
 
-    runtime = SimpleNamespace(get_manager=lambda: BrokenManager())
-
-    with pytest.raises(RuntimeError, match="boom"):
-        progress.convert_proxy(runtime=runtime)
-
-    assert progress.dump_tasks() == snapshot
-    assert set(progress._tasks) == {first, second}
-    assert progress._tasks[second].fields["transient"] is True
+    assert isinstance(proxy, QueueProgressProxy)
+    assert proxy.dump_tasks() == snapshot
+    assert set(proxy.dump_tasks()) == {first, second}
 
 
 def test_load_task_advances_task_index():
@@ -68,18 +63,16 @@ def test_load_task_advances_task_index():
     assert new_task_id == 8
 
 
-def test_runtime_get_manager_failure_does_not_poison_runtime(monkeypatch):
+def test_runtime_install_command_bridge_starts_and_stops():
     runtime = M.Runtime()
+    progress = Progress(disable=True)
+    proxy = progress.convert_proxy(runtime=runtime)
 
-    def fail_start(self):
-        raise RuntimeError("boom")
+    assert runtime.command_bridge is not None
 
-    monkeypatch.setattr(proxy_mod.MqdmManager, "start", fail_start)
+    runtime.shutdown_command_bridge()
 
-    with pytest.raises(RuntimeError, match="boom"):
-        runtime.get_manager()
-
-    assert runtime.manager is None
+    assert runtime.command_bridge is None
 
 
 def test_progress_write_prints_to_own_console():
@@ -281,3 +274,123 @@ def test_progress_silent_uses_in_memory_console():
     assert hasattr(progress.console.file, "getvalue")
     assert progress._init_options["silent"] is True
     assert "console" not in progress._init_options
+
+
+def test_queue_transport_remote_queues_send_commands():
+    q = __import__("queue").SimpleQueue()
+    transport = QueueTransport(q)
+
+    transport.send("refresh", (), {})
+    transport.send("write", ("hello",), {})
+
+    assert q.get() == ("send", "refresh", (), {})
+    assert q.get() == ("send", "write", ("hello",), {})
+
+
+def test_queue_command_bridge_replays_commands():
+    target = SimpleNamespace(calls=[])
+
+    def write(*args, **kwargs):
+        target.calls.append((args, kwargs))
+
+    target.write = write
+    q = __import__("queue").Queue()
+    bridge = QueueCommandBridge(q, CommandDriver(target))
+    bridge.start()
+    q.put(("write", ("hello",), {"markup": False}))
+    import time
+    deadline = time.time() + 1
+    while not target.calls and time.time() < deadline:
+        time.sleep(0.01)
+    bridge.stop()
+
+    assert target.calls == [(("hello",), {"markup": False})]
+
+
+def test_command_proxy_owner_only_and_worker_only_flags():
+    class Target:
+        def __init__(self):
+            self.calls = []
+
+        def owner(self, value):
+            self.calls.append(("owner", value))
+
+        def worker(self, value):
+            self.calls.append(("worker", value))
+
+    class Proxy(TransportCommandProxy):
+        owner = proxymethod(Target.owner, expect_reply=False, owner_only=True)
+        worker = proxymethod(Target.worker, expect_reply=False, worker_only=True)
+
+        def __init__(self, transport, *, is_owner):
+            super().__init__(transport)
+            self._is_owner = is_owner
+
+        def _proxy_is_owner(self):
+            return self._is_owner
+
+    target = Target()
+    owner_proxy = Proxy(LocalTransport(CommandDriver(target)), is_owner=True)
+    worker_proxy = Proxy(LocalTransport(CommandDriver(target)), is_owner=False)
+
+    owner_proxy.owner(1)
+    owner_proxy.worker(2)
+    worker_proxy.owner(3)
+    worker_proxy.worker(4)
+
+    assert target.calls == [("owner", 1), ("worker", 4)]
+
+
+def test_queue_progress_proxy_refuses_non_owner_render():
+    q = __import__("queue").SimpleQueue()
+    proxy = QueueProgressProxy(QueueTransport(q))
+
+    with pytest.raises(RuntimeError, match="owner process"):
+        list(proxy.__rich_console__(Console(), None))
+
+
+def test_command_proxy_mixin_from_ref_requires_subclass_override():
+    class Proxy(CommandProxyMixin[object]):
+        pass
+
+    with pytest.raises(NotImplementedError, match="must be implemented"):
+        Proxy.from_ref(object())
+
+
+def test_transport_command_proxy_dispatches_send_and_request():
+    class Target:
+        def __init__(self):
+            self.calls = []
+
+        def record(self, value):
+            self.calls.append(("record", value))
+
+        def echo(self, value):
+            self.calls.append(("echo", value))
+            return value
+
+    class Proxy(TransportCommandProxy):
+        record = proxymethod(Target.record, expect_reply=False)
+        echo = proxymethod(Target.echo)
+
+    target = Target()
+    proxy = Proxy(LocalTransport(CommandDriver(target)))
+
+    assert proxy.record(7) is None
+    assert proxy.echo(9) == 9
+    assert target.calls == [("record", 7), ("echo", 9)]
+
+
+def test_exposed_methods_for_uses_proxy_wrapped_methods():
+    class Target:
+        def send_only(self):
+            return None
+
+        def ask(self):
+            return 1
+
+    class Proxy(TransportCommandProxy):
+        send_only = proxymethod(Target.send_only, expect_reply=False)
+        ask = proxymethod(Target.ask)
+
+    assert exposed_methods_for(Proxy) == ("send_only", "ask")

@@ -219,6 +219,7 @@ def example_tqdm_speed(t=10, transient=False, **kw):
 def example_mqdm_fps(t=20, N=1000000000, **kw):
     from time import time
     t0 = time()
+    # M._runtime.get_pbar(pool_mode='process')
     for i in mqdm(range(N)):
         if time() - t0 > t:
             break
