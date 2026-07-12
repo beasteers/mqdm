@@ -1,3 +1,5 @@
+__version__ = "2.0.0"
+
 from .runtime import Runtime, _current_runtime, configure
 
 

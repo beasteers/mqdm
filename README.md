@@ -36,3 +36,17 @@ Local preview:
 pip install -e ".[docs]"
 mkdocs serve
 ```
+
+## Tests
+
+```bash
+pip install -e ".[test]"
+pytest
+```
+
+```bash
+for py in 3.6 3.7 3.8 3.9 3.10 3.11 3.12 3.13 3.14; do
+  echo "=== Python $py ==="
+  uv run --python $py --no-sync pytest tests/ -q 2>&1 || break
+done
+```
