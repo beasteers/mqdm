@@ -43,10 +43,10 @@ mkdocs serve
 pip install -e ".[test]"
 pytest
 ```
-
+Test across multiple Python versions:
 ```bash
-for py in 3.6 3.7 3.8 3.9 3.10 3.11 3.12 3.13 3.14; do
+for py in 3.10 3.11 3.12 3.13 3.14 3.15; do
   echo "=== Python $py ==="
-  uv run --python $py --no-sync pytest tests/ -q 2>&1 || break
+  uv run --python $py pytest tests/ -q 2>&1 || break
 done
 ```
