@@ -9,8 +9,8 @@ are reliably delivered to a sink running in the main process.
 
     import mqdm as M
 
-    sink = M.event_stream.ListSink()
-    with M.event_stream.event_stream(sink) as runtime:
+    sink = M.events.ListSink()
+    with M.events.event_stream(sink) as runtime:
         list(M.pool(work_fn, items, runtime=runtime))
 
     for event in sink.events:
@@ -28,7 +28,7 @@ from typing import Any, Callable, TextIO
 import mqdm as M
 
 from .events import EventEnvelope
-from .runtime import Runtime
+from ..runtime import Runtime
 
 _REQUEST_POLL_INTERVAL = 0.1
 
@@ -135,7 +135,7 @@ def event_stream(
     Returns an :class:`EventStream` instance that should be used as a
     context manager::
 
-        with M.event_stream.event_stream(my_sink) as runtime:
+        with M.events.event_stream(my_sink) as runtime:
             M.pool(fn, items, runtime=runtime)
     """
     return EventStream(sink, runtime=runtime)
@@ -155,8 +155,8 @@ class ListSink:
 
     ::
 
-        sink = M.event_stream.ListSink()
-        with M.event_stream.event_stream(sink) as runtime:
+        sink = M.events.ListSink()
+        with M.events.event_stream(sink) as runtime:
             M.pool(fn, items, runtime=runtime)
         first_error = next(e for e in sink.events if e["type"] == "task_failed")
     """
@@ -187,8 +187,8 @@ class JsonlSink:
 
     ::
 
-        with M.event_stream.JsonlSink("events.jsonl") as sink:
-            with M.event_stream.event_stream(sink) as runtime:
+        with M.events.JsonlSink("events.jsonl") as sink:
+            with M.events.event_stream(sink) as runtime:
                 M.pool(fn, items, runtime=runtime)
     """
 
@@ -226,3 +226,11 @@ def _normalize(event: EventEnvelope) -> dict[str, Any]:
     elif etype == "task_failed":
         out["error"] = repr(event.get("error", ""))
     return out
+
+
+__all__ = [
+    "EventStream",
+    "JsonlSink",
+    "ListSink",
+    "event_stream",
+]

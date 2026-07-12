@@ -2,7 +2,7 @@ from types import SimpleNamespace
 import sys
 
 import mqdm as M
-from mqdm import _dev
+from mqdm.utils import _dev
 
 
 def test_timeit_supports_plain_and_factory_decorator(capsys):
@@ -47,7 +47,7 @@ def test_profile_restores_pause_state(monkeypatch):
         return 7
 
     try:
-        from mqdm.executor import _thread_local_data
+        from mqdm.parallel.executor import _thread_local_data
         had_runtime = hasattr(_thread_local_data, "runtime")
         old_runtime = getattr(_thread_local_data, "runtime", None)
         _thread_local_data.runtime = runtime

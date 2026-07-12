@@ -18,11 +18,11 @@ if TYPE_CHECKING:
     from logging import Formatter, Logger
     from weakref import ReferenceType
 
-    from ._logging import MQDMHandler
+    from .utils._logging import MQDMHandler
     from .bar import mqdm as MQDMBar
-    from .proxy import QueueCommandDispatch
-    from .events import EventEnvelope
-    from .executor import T_POOL_MODE
+    from .utils.proxy import QueueCommandDispatch
+    from .events.events import EventEnvelope
+    from .parallel.executor import T_POOL_MODE
 
 
 class LoggingConfig(TypedDict, total=False):
@@ -56,10 +56,10 @@ class RichProgressFactory:
         columns: tuple[Any, ...] | None = None,
         **kw: Any,
     ) -> ProgressBackend:
-        from . import progress
+        from .backend import rich
 
-        columns = columns or progress.Progress.default_progress_columns()
-        return progress.Progress(*columns, **kw)
+        columns = columns or rich.Progress.default_progress_columns()
+        return rich.Progress(*columns, **kw)
 
 
 class Runtime:
@@ -192,7 +192,7 @@ class Runtime:
 
     def _get_context_store(self) -> dict[str, dict[str, Any]]:
         """Return the thread-local per-runtime context mapping."""
-        from .executor import _get_local, _set_local
+        from .parallel.executor import _get_local, _set_local
 
         contexts = _get_local(_RUNTIME_CONTEXTS_KEY)
         if contexts is None:
@@ -230,7 +230,7 @@ class Runtime:
         return self.backend_factory.create(runtime=self, columns=columns, **kw)
 
     def _ensure_command_dispatch(self) -> QueueCommandDispatch:
-        from .proxy import QueueCommandDispatch
+        from .utils.proxy import QueueCommandDispatch
 
         dispatch = self.command_dispatch
         if dispatch is not None:
@@ -346,7 +346,7 @@ class Runtime:
 
     @contextmanager
     def context(self, **context: Any):
-        from .executor import _clear_local
+        from .parallel.executor import _clear_local
 
         contexts = self._get_context_store()
         prev = self.get_context()
@@ -447,7 +447,7 @@ class Runtime:
         Returns:
             The attached or reused ``MQDMHandler`` instance.
         """
-        from ._logging import MQDMHandler, capture_warnings as _capture_warnings, release_warnings as _release_warnings
+        from .utils._logging import MQDMHandler, capture_warnings as _capture_warnings, release_warnings as _release_warnings
 
         logger = logger or logging.getLogger()
         handler = MQDMHandler.ensure_on_logger(logger, self, formatter=formatter, markup=markup)
@@ -478,7 +478,7 @@ class Runtime:
         Args:
             logger: Logger to detach from. Defaults to the root logger.
         """
-        from ._logging import MQDMHandler, release_warnings as _release_warnings
+        from .utils._logging import MQDMHandler, release_warnings as _release_warnings
 
         if logger is None:
             MQDMHandler.remove_from_all_loggers(self)
@@ -512,7 +512,7 @@ _runtime = Runtime()
 
 def _current_runtime() -> Runtime:
     try:
-        from .executor import _get_local
+        from .parallel.executor import _get_local
 
         return _get_local('runtime', _runtime)
     except Exception:

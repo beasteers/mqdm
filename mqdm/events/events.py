@@ -134,3 +134,15 @@ class TaskFailedEvent(EventEnvelope, total=False):
 Event = (
     PrintEvent | LogEvent | TaskStartedEvent | TaskFinishedEvent | TaskFailedEvent
 )
+
+__all__ = [
+    "Event",
+    "EventContext",
+    "EventEnvelope",
+    "EventType",
+    "LogEvent",
+    "PrintEvent",
+    "TaskFailedEvent",
+    "TaskFinishedEvent",
+    "TaskStartedEvent",
+]

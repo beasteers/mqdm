@@ -7,9 +7,10 @@ from dataclasses import dataclass
 from typing import Any, Callable, Literal, TypeVar, TypeAlias
 
 import mqdm as M
+from .. import utils
 
-from . import Runtime, utils
-from .bar import mqdm
+from .. import Runtime
+from ..bar import mqdm
 from .pool import (
     DescFunc,
     PoolError,

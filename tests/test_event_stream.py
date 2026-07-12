@@ -4,7 +4,7 @@ import time
 import pytest
 
 import mqdm as M
-from mqdm.event_stream import JsonlSink, ListSink, event_stream
+from mqdm.events import JsonlSink, ListSink, event_stream
 
 
 def test_list_sink_collects_events():

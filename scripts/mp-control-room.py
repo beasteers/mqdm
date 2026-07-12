@@ -414,7 +414,7 @@ class ControlRoomApp(App[None]):
         self.queue_row_map: list[int] = []
 
         self.local_events: queue.Queue = queue.Queue()
-        self.stream = mqdm.event_stream.EventStream(self.local_events.put)
+        self.stream = mqdm.events.EventStream(self.local_events.put)
         self.runtime = self.stream.runtime
         if install_logging:
             self.runtime.install_logging(logger=logger, level=log_level, capture_warnings="process")

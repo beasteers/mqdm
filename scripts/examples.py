@@ -87,7 +87,7 @@ def example_pool(n=5, transient=False, n_workers=5, **kw):
 
 def example_cf_pool(n=5, transient=False, n_workers=5, **kw):
     from concurrent.futures import ProcessPoolExecutor, as_completed
-    from mqdm.executor import Initializer
+    from mqdm import Initializer
     import time
     t0 = time.time()
 
@@ -102,7 +102,7 @@ def example_cf_pool(n=5, transient=False, n_workers=5, **kw):
 
 def example_mp_pool(n=5, transient=False, n_workers=5, **kw):
     from multiprocessing import Pool
-    from .executor import Initializer
+    from mqdm import Initializer
     import time
     t0 = time.time()
 

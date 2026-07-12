@@ -64,24 +64,23 @@ def uninstall_logging(*, logger=None):
 # ----------------------------------- Utils ---------------------------------- #
 
 from . import utils
-from .executor import T_POOL_MODE, get_executor
+from .parallel.executor import T_POOL_MODE, get_executor, Initializer
 from .utils import args, fn, fopen, ratelimit
-from ._logging import MQDMHandler
+from .utils._logging import MQDMHandler
 
 # ---------------------------------- Events ---------------------------------- #
 
 from . import events
-from . import event_stream
 
 # ----------------------------------- Core ----------------------------------- #
 
 from .bar import mqdm
-from .pool import ipool, pool, PoolError
-from .apool import aipool, apool
+from .parallel.pool import ipool, pool, PoolError
+from .parallel.apool import aipool, apool
 
 # ----------------------------- Development utils ---------------------------- #
 
-from ._dev import bp, embed, iex, profile, timeit
+from .utils._dev import bp, embed, iex, profile, timeit
 
 __all__ = [
     'mqdm',

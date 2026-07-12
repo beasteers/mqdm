@@ -6,8 +6,8 @@ from concurrent.futures._base import FINISHED, RUNNING
 from concurrent.futures import Future, Executor, ThreadPoolExecutor, ProcessPoolExecutor
 from concurrent.futures.process import _RemoteTraceback  # used in bar.py
 import mqdm as M
-from .utils import fn as fn_util
-from .runtime import _current_runtime
+from ..utils import fn as fn_util
+from ..runtime import _current_runtime
 
 # ----------- Process Pool Executor with KeyboardInterrupt Handling ---------- #
 

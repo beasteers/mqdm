@@ -11,9 +11,10 @@ from time import monotonic
 from typing import Any, TypeVar, Callable, Literal, TypeAlias
 
 import mqdm as M
+from .. import utils
 
-from . import Runtime, utils
-from .bar import mqdm
+from .. import Runtime
+from ..bar import mqdm
 from .executor import T_POOL_MODE
 
 T = TypeVar('T')

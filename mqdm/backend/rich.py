@@ -8,7 +8,7 @@ from rich import progress
 import mqdm as M
 
 from .backend import RichTaskState, TaskState
-from .proxy import TransportProxy, proxymethod
+from ..utils.proxy import TransportProxy, proxymethod
 
 
 class _DiscardFile:
@@ -110,15 +110,15 @@ class Progress(progress.Progress):
         Per-task fields such as ``bytes`` are resolved by the individual column
         implementations, so the shared layout does not vary by runtime options.
         """
-        from . import progress_columns
+        from . import rich_progress_columns
 
         return (
             "[progress.description]{task.description}",
-            progress_columns.TwoToneColumn(bar_width=None),
+            rich_progress_columns.TwoToneColumn(bar_width=None),
             "[progress.percentage]{task.percentage:>3.0f}%",
-            progress_columns.MofNColumn(),
-            progress_columns.SpeedColumn(),
-            progress_columns.TimeElapsedColumn(compact=True),
+            rich_progress_columns.MofNColumn(),
+            rich_progress_columns.SpeedColumn(),
+            rich_progress_columns.TimeElapsedColumn(compact=True),
             progress.TimeRemainingColumn(compact=True),
             progress.SpinnerColumn(),
         )

@@ -1,9 +1,7 @@
-import importlib
-import inspect
 import mqdm
+import mqdm.parallel.pool as pool_mod
 import pytest
 from mqdm import utils
-from mqdm import executor as executor_mod
 
 
 def test_args_basic_call_and_from_item():
@@ -119,8 +117,6 @@ class _FakeExecutor:
 
 
 def test_shutdown_for_interrupt_signals_only_stragglers():
-    pool_mod = importlib.import_module('mqdm.pool')
-
     exited = _FakeProc(alive_after_join=False)  # unwinds during grace
     stuck = _FakeProc(alive_after_join=True)    # still running after grace
     ex = _FakeExecutor([exited, stuck])
@@ -136,8 +132,6 @@ def test_shutdown_for_interrupt_signals_only_stragglers():
 
 
 def test_shutdown_for_interrupt_kill_op():
-    pool_mod = importlib.import_module('mqdm.pool')
-
     stuck = _FakeProc(alive_after_join=True)
     ex = _FakeExecutor([stuck])
     pool_mod._shutdown_for_interrupt(
@@ -147,8 +141,6 @@ def test_shutdown_for_interrupt_kill_op():
 
 
 def test_shutdown_for_interrupt_non_process_leaves_procs_alone():
-    pool_mod = importlib.import_module('mqdm.pool')
-
     proc = _FakeProc(alive_after_join=True)
     ex = _FakeExecutor([proc])
     pool_mod._shutdown_for_interrupt(ex, 'thread', mqdm._current_runtime())

@@ -1,5 +1,5 @@
 import mqdm as M
-from mqdm._logging import MQDMHandler
+from mqdm.utils._logging import MQDMHandler
 
 
 def test_pause_context_manager_sets_event_after_exit():

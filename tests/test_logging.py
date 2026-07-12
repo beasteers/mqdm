@@ -5,8 +5,8 @@ import warnings
 import mqdm as M
 import mqdm.runtime as runtime_mod
 from mqdm import install_logging, uninstall_logging
-from mqdm import _logging as logging_mod
-from mqdm._logging import MQDMHandler, capture_warnings, release_warnings
+from mqdm.utils import _logging as logging_mod
+from mqdm.utils._logging import MQDMHandler, capture_warnings, release_warnings
 
 
 class _RecordingRuntime(M.Runtime):

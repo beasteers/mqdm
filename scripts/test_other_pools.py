@@ -22,7 +22,7 @@ def run_with_mqdm_pool(n_workers=4):
     )
 
 import mqdm
-from mqdm.executor import Initializer
+from mqdm.parallel.executor import Initializer
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
@@ -56,7 +56,7 @@ def run_with_thread_pool(n_workers=8):
 
 
 import mqdm
-from mqdm.executor import Initializer
+from mqdm.parallel.executor import Initializer
 
 from multiprocessing import Pool
 
@@ -74,7 +74,7 @@ def run_with_mp_pool(n_workers=4):
 
 
 import mqdm
-from mqdm.executor import Initializer
+from mqdm.parallel.executor import Initializer
 
 from joblib import Parallel, delayed
 
@@ -110,7 +110,7 @@ def run_with_threads(n_workers=8):
 
 def run_with_dask(n_workers=4):
     from dask.distributed import Client, LocalCluster, as_completed
-    from mqdm.executor import Initializer
+    from mqdm.parallel.executor import Initializer
     import mqdm
 
     cluster = LocalCluster(n_workers=n_workers, threads_per_worker=1)

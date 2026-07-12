@@ -4,9 +4,9 @@ import pytest
 from rich.console import Console
 
 import mqdm as M
-from mqdm.backend import TaskState
-from mqdm.proxy import CommandHandler, CommandProxyMixin, CommandTransportClosed, LocalTransport, QueueCommandDispatch, QueueTransport, TransportProxy, exposed_methods_for, proxymethod
-from mqdm.progress import Progress, ProgressProxy
+from mqdm.backend.backend import TaskState
+from mqdm.utils.proxy import CommandHandler, CommandProxyMixin, CommandTransportClosed, LocalTransport, QueueCommandDispatch, QueueTransport, TransportProxy, exposed_methods_for, proxymethod
+from mqdm.backend.rich import Progress, ProgressProxy
 
 
 def test_load_task_restores_finished_metadata():

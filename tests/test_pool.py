@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from mqdm.pool import _submit_next
-from mqdm._process_pool_keyboard import process_worker_keyboard_interrupt
+from mqdm.parallel.pool import _submit_next
+from mqdm.parallel._process_pool_keyboard import process_worker_keyboard_interrupt
 
 
 class _DummyExecutor:
