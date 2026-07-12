@@ -4,7 +4,7 @@ import pytest
 from rich.console import Console
 
 import mqdm as M
-from mqdm.backend.backend import TaskState
+from mqdm.backend.protocols import TaskState
 from mqdm.utils.proxy import CommandHandler, CommandProxyMixin, CommandTransportClosed, LocalTransport, QueueCommandDispatch, QueueTransport, TransportProxy, exposed_methods_for, proxymethod
 from mqdm.backend.rich import Progress, ProgressProxy
 

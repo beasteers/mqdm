@@ -7,7 +7,7 @@ from rich.console import Console
 from rich import progress
 import mqdm as M
 
-from .backend import RichTaskState, TaskState
+from .protocols import RichTaskState, TaskState
 from ..utils.proxy import TransportProxy, proxymethod
 
 

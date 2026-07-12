@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from .backend import (
+from .protocols import (
     ProgressBackend,
     ProgressBackendFactory,
     ProxyConvertibleBackend,
     RichTaskState,
     TaskState,
 )
-from .backend import ProgressBackendFactory as _PF  # noqa: F401 — re-export
+from .protocols import ProgressBackendFactory as _PF  # noqa: F401 — re-export
 
 
 
