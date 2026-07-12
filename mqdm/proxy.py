@@ -12,6 +12,8 @@ from rich.console import Console
 from rich import progress
 import mqdm as M
 
+from .backend import TaskState
+
 
 class Task(progress.Task):
     @property
@@ -52,11 +54,11 @@ class TaskSnapshot:
             progress_samples.append((task._progress[-1].timestamp, sum(s.completed for s in task._progress)))
         return cls(**data, _progress=progress_samples)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> TaskState:
         return dataclasses.asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict) -> 'TaskSnapshot':
+    def from_dict(cls, data: TaskState) -> 'TaskSnapshot':
         return cls(**data)
 
 
@@ -181,7 +183,7 @@ class Progress(progress.Progress):
     #  exported, restored, and mirrored in another process.                        #
     # ---------------------------------------------------------------------------- #
 
-    def dump_tasks(self):
+    def dump_tasks(self) -> dict[int, TaskState]:
         with self._lock:
             return {task_id: self._dump_task(self._tasks[task_id]).to_dict() for task_id in self._tasks}
 
@@ -204,7 +206,7 @@ class Progress(progress.Progress):
                 'tasks': {task_id: self._dump_task(self._tasks[task_id]).to_dict() for task_id in self._tasks},
             }
 
-    def dump_task(self, task_id):
+    def dump_task(self, task_id) -> TaskState:
         with self._lock:
             return self._dump_task(self._tasks[task_id]).to_dict()
 
@@ -224,7 +226,7 @@ class Progress(progress.Progress):
             task._progress = deque([progress.ProgressSample(*s) for s in _progress], maxlen=1000)
         return task
 
-    def load_task(self, task: dict, start=True):
+    def load_task(self, task: TaskState, start=True):
         with self._lock:
             task = self._load_task(TaskSnapshot.from_dict(task), start=start)
             self._tasks[task.id] = task

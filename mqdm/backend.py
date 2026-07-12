@@ -1,6 +1,22 @@
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any, Protocol, TypedDict, runtime_checkable
+
+
+class TaskState(TypedDict, total=False):
+    """Detached or transport-safe task snapshot shared across backends."""
+
+    id: int
+    description: str
+    total: float | None
+    completed: float
+    visible: bool
+    fields: dict[str, Any]
+    start_time: float | None
+    stop_time: float | None
+    finished_time: float | None
+    finished_speed: float | None
+    _progress: list[tuple[float, float]] | None
 
 
 class ProgressBackend(Protocol):
@@ -21,12 +37,14 @@ class ProgressBackend(Protocol):
     # ------------------------------ Task Management ----------------------------- #
 
     def add_task(self, **task_kw: Any) -> int: ...
-    def load_task(self, task: dict[str, Any], start: bool = True) -> None: ...
     def try_update(self, task_id: int, **task_update: Any) -> None: ...
-    def dump_task(self, task_id: int) -> dict[str, Any] | None: ...
-    def pop_task(self, task_id: int, remove: bool | None = None) -> dict[str, Any] | None: ...
-    def clear(self) -> None: ...
+    def dump_task(self, task_id: int) -> TaskState | None: ...
+    def load_task(self, task: TaskState, start: bool = True) -> None: ...
+    def pop_task(self, task_id: int, remove: bool | None = None) -> TaskState | None: ...
 
-    # ----------------------------------- Proxy ---------------------------------- #
+
+@runtime_checkable
+class ProxyConvertibleBackend(Protocol):
+    """Optional capability for backends that can promote themselves for IPC."""
 
     def convert_proxy(self, runtime=None) -> ProgressBackend: ...

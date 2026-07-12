@@ -4,7 +4,7 @@ import os
 import sys
 from collections.abc import Callable, Iterable, Iterator
 from time import monotonic
-from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar, TypedDict
+from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar
 
 from multiprocessing.managers import RemoteError
 
@@ -14,7 +14,7 @@ from .executor import _get_local
 import mqdm as M
 
 if TYPE_CHECKING:
-    from .backend import ProgressBackend
+    from .backend import ProgressBackend, TaskState
 
 # Raised when the shared progress manager/proxy is already gone — e.g. a worker
 # finalizing its bars as the pool shuts down after an error. Updates to it are
@@ -27,16 +27,6 @@ DISABLED = (os.getenv("MQDM_DISABLED") or "").lower() in ("1", "true", "yes", "y
 T = TypeVar('T')
 TaskId: TypeAlias = int
 DescFunc: TypeAlias = Callable[[T, int], str]
-
-
-class TaskState(TypedDict, total=False):
-    id: int
-    description: str
-    total: float | None
-    completed: int
-    visible: bool
-    start_time: float | None
-    fields: dict[str, Any]
 
 
 class mqdm(Generic[T]):

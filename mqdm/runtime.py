@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal, TypeAlias, TypedDict
 
 import rich
 
-from .backend import ProgressBackend
+from .backend import ProgressBackend, ProxyConvertibleBackend
 from . import utils
 
 if TYPE_CHECKING:
@@ -203,16 +203,24 @@ class Runtime:
         from . import proxy
 
         columns = columns or self.default_progress_columns(bytes=bytes)
-        if pool_mode == 'process':
-            return self.get_manager().mqdm_Progress(*columns, **kw)
         return proxy.Progress(*columns, **kw)
+
+    def _ensure_process_backend(self, pbar: ProgressBackend) -> ProgressBackend:
+        """Promote a local backend when process mode requires IPC-safe access."""
+        if pbar.multiprocess:
+            return pbar
+        if isinstance(pbar, ProxyConvertibleBackend):
+            return pbar.convert_proxy(runtime=self)
+        raise RuntimeError(
+            f"Progress backend {type(pbar).__name__!r} does not support process mode promotion."
+        )
 
     def get_pbar(self, pool_mode: T_POOL_MODE = None, **kw: Any) -> ProgressBackend:
         pbar = self.pbar
         if pbar is None:
             pbar = self.pbar = self.new_pbar(pool_mode=pool_mode, **{**self._progress_kw, **kw})
-        elif pool_mode == 'process' and not pbar.multiprocess:
-            pbar = self.pbar = pbar.convert_proxy(runtime=self)
+        if pool_mode == 'process':
+            pbar = self.pbar = self._ensure_process_backend(pbar)
         return pbar
 
     def clear_pbar(self, strict: bool = True, force: bool = False) -> None:
