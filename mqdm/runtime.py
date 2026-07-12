@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
     from ._logging import MQDMHandler
     from .bar import mqdm as MQDMBar
-    from .command_proxy import QueueCommandBridge
+    from .command_proxy import QueueCommandDispatch
     from .executor import T_POOL_MODE
 
 
@@ -83,7 +83,7 @@ class Runtime:
         expand: bool = False,
     ) -> None:
         self.pbar: ProgressBackend | None = None
-        self.command_bridge: QueueCommandBridge | None = None
+        self.command_dispatch: QueueCommandDispatch | None = None
         self.backend_factory: ProgressBackendFactory = backend_factory or RichProgressFactory()
         self.paused: bool = False
         self._context_key = f"runtime:{id(self)}"
@@ -159,7 +159,7 @@ class Runtime:
         pbar = state.get('pbar')
         if pbar is not None and not getattr(pbar, 'multiprocess', False):
             state['pbar'] = None
-        state['command_bridge'] = None
+        state['command_dispatch'] = None
         state['instances'] = OrderedDict()
         state['logging_handlers'] = None
         # Warning capture is process-local state and must be reinstalled in workers.
@@ -224,22 +224,22 @@ class Runtime:
         """Construct a backend instance using the configured factory."""
         return self.backend_factory.create(runtime=self, columns=columns, **kw)
 
-    def _ensure_command_bridge(self) -> QueueCommandBridge:
-        from .command_proxy import QueueCommandBridge
+    def _ensure_command_dispatch(self) -> QueueCommandDispatch:
+        from .command_proxy import QueueCommandDispatch
 
-        bridge = self.command_bridge
-        if bridge is not None:
-            return bridge
-        bridge = self.command_bridge = QueueCommandBridge()
-        bridge.start()
-        return bridge
+        dispatch = self.command_dispatch
+        if dispatch is not None:
+            return dispatch
+        dispatch = self.command_dispatch = QueueCommandDispatch()
+        dispatch.start()
+        return dispatch
 
     def _ensure_process_backend(self, pbar: ProgressBackend) -> ProgressBackend:
         """Promote a local backend when process mode requires IPC-safe access."""
         if pbar.multiprocess:
             return pbar
         if isinstance(pbar, ProxyConvertibleBackend):
-            return pbar.convert_proxy(command_bridge=self._ensure_command_bridge())
+            return pbar.convert_proxy(command_dispatch=self._ensure_command_dispatch())
         raise RuntimeError(
             f"Progress backend {type(pbar).__name__!r} does not support process mode promotion."
         )
@@ -262,7 +262,7 @@ class Runtime:
             if self.pbar is not None:
                 self.pbar.stop()
             self.pbar = None
-            self.shutdown_command_bridge()
+            self.shutdown_command_dispatch()
         if self.instances:
             if strict:
                 raise RuntimeError("Cannot clear progress bar while instances are still active.")
@@ -279,10 +279,10 @@ class Runtime:
                 pbar.refresh()
                 pbar.stop()
             self.pbar = None
-            # The command bridge is only needed while a process-mode pbar is
+            # The command dispatch is only needed while a process-mode pbar is
             # live. Tearing it down with the pbar keeps its per-worker reply ends
-            # and per-pool driver registrations from accumulating across pools.
-            self.shutdown_command_bridge()
+            # and per-pool handler registrations from accumulating across pools.
+            self.shutdown_command_dispatch()
 
     def add_instance(self, bar: MQDMBar) -> MQDMBar:
         self.instances.setdefault(hash(bar), weakref.ref(bar))
@@ -473,23 +473,23 @@ class Runtime:
             _release_warnings(runtime=self)
         self.logging_config = None
 
-    def shutdown_command_bridge(self) -> None:
-        bridge = self.command_bridge
-        if bridge is None:
+    def shutdown_command_dispatch(self) -> None:
+        dispatch = self.command_dispatch
+        if dispatch is None:
             return
-        bridge.closed.set()
+        dispatch.closed.set()
         try:
-            bridge.stop()
+            dispatch.stop()
         finally:
-            self.command_bridge = None
+            self.command_dispatch = None
 
     def atexit(self) -> None:
         self.uninstall_logging()
-        bridge = self.command_bridge
-        if bridge is not None:
-            bridge.closed.set()
+        dispatch = self.command_dispatch
+        if dispatch is not None:
+            dispatch.closed.set()
         self.close_instances()
-        self.shutdown_command_bridge()
+        self.shutdown_command_dispatch()
 
 
 _runtime = Runtime()

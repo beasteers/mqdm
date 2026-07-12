@@ -302,13 +302,13 @@ def _pool_thread(
         })
 
 
-def _bridge_events(event_queue: Any, result_queue: queue.Queue, stop: threading.Event) -> None:
+def _dispatch_events(event_queue: Any, result_queue: queue.Queue, stop: threading.Event) -> None:
     """Drain the multiprocessing event queue as fast as possible.
 
     Worker processes emit log/print/task events directly into a process-safe
     queue. The Textual UI should not poll that queue itself at frame cadence;
     doing so can let the pipe back up and block workers on ``put()``. A small
-    background bridge keeps the OS pipe drained and hands events to the UI over
+    background dispatch keeps the OS pipe drained and hands events to the UI over
     a plain in-process queue.
     """
     while not stop.is_set():
@@ -432,7 +432,7 @@ class ControlRoomApp(App[None]):
         self.refresh_per_second = refresh_per_second
         self.queue_row_map: list[int] = []
 
-        # This event stream is separate from mqdm's command bridge. A plain
+        # This event stream is separate from mqdm's command dispatch. A plain
         # multiprocessing queue is enough here; no manager/proxy indirection is
         # required just to forward structured runtime events into the UI.
         self.event_queue: mp.Queue = mp.Queue()
@@ -444,7 +444,7 @@ class ControlRoomApp(App[None]):
             self.runtime.install_logging(logger=logger, level=log_level, capture_warnings="process")
 
         self.local_events: queue.Queue = queue.Queue()
-        self.stop_bridge = threading.Event()
+        self.stop_dispatch = threading.Event()
         self.pool_thread = threading.Thread(
             target=_pool_thread,
             kwargs={
@@ -459,9 +459,9 @@ class ControlRoomApp(App[None]):
             },
             daemon=True,
         )
-        self.bridge_thread = threading.Thread(
-            target=_bridge_events,
-            args=(self.event_queue, self.local_events, self.stop_bridge),
+        self.dispatch_thread = threading.Thread(
+            target=_dispatch_events,
+            args=(self.event_queue, self.local_events, self.stop_dispatch),
             daemon=True,
         )
 
@@ -485,7 +485,7 @@ class ControlRoomApp(App[None]):
         if self.specs:
             self.selected_item_id = self.specs[0]["item_id"]
         self.pool_thread.start()
-        self.bridge_thread.start()
+        self.dispatch_thread.start()
         self.set_interval(1 / max(self.refresh_hz, 1), self._poll_events)
         # Paint the progress pane on a clock (like Progress's own Live refresh
         # thread), decoupled from event arrival, so time-based columns animate
@@ -494,11 +494,11 @@ class ControlRoomApp(App[None]):
         self.call_after_refresh(self._refresh_all)
 
     def on_unmount(self) -> None:
-        self.stop_bridge.set()
+        self.stop_dispatch.set()
         if self.pool_thread.is_alive():
             self.pool_thread.join(timeout=1)
-        if self.bridge_thread.is_alive():
-            self.bridge_thread.join(timeout=1)
+        if self.dispatch_thread.is_alive():
+            self.dispatch_thread.join(timeout=1)
         self.runtime.uninstall_logging()
         self.event_queue.cancel_join_thread()
         self.event_queue.close()

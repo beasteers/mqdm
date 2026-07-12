@@ -9,7 +9,7 @@ from rich import progress
 import mqdm as M
 
 from .backend import RichTaskState, TaskState
-from .command_proxy import TransportCommandProxy, proxymethod
+from .command_proxy import TransportProxy, proxymethod
 
 
 class Task(progress.Task):
@@ -245,12 +245,12 @@ class Progress(progress.Progress):
     #  owner-rendered proxy for process workers.                                   #
     # ---------------------------------------------------------------------------- #
 
-    def convert_proxy(self, command_bridge=None) -> 'QueueProgressProxy':
+    def convert_proxy(self, command_dispatch=None) -> 'ProgressProxy':
         """Convert to a multiprocessing-safe proxy object."""
-        return QueueProgressProxy.from_ref(self, command_bridge=command_bridge)
+        return ProgressProxy.from_target(self, command_dispatch=command_dispatch)
 
 
-class QueueProgressProxy(TransportCommandProxy[Progress]):
+class ProgressProxy(TransportProxy[Progress]):
     multiprocess = True
 
     start = proxymethod(Progress.start, expect_reply=False, owner_only=True)
@@ -276,7 +276,7 @@ class QueueProgressProxy(TransportCommandProxy[Progress]):
     dump_tasks = proxymethod(Progress.dump_tasks)
 
     def __rich_console__(self, console, options):
-        ref = self.ref
-        if ref is None:
-            raise RuntimeError("QueueProgressProxy can only render in the owner process.")
-        yield ref.get_renderable()
+        target = self.target
+        if target is None:
+            raise RuntimeError("ProgressProxy can only render in the owner process.")
+        yield target.get_renderable()

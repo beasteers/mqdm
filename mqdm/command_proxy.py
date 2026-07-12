@@ -10,50 +10,50 @@ from typing import Any, Generic, Protocol, TypeVar, runtime_checkable
 
 TRef = TypeVar("TRef")
 TProxy = TypeVar("TProxy", bound="CommandProxyMixin[Any]")
-TTransportProxy = TypeVar("TTransportProxy", bound="TransportCommandProxy[Any]")
+TTransportProxy = TypeVar("TTransportProxy", bound="TransportProxy[Any]")
 _REQUEST_POLL_INTERVAL = 0.1
 
 
 class CommandTransportClosed(RuntimeError):
-    """Raised when a proxy transport can no longer reach a live owner bridge."""
+    """Raised when a proxy transport can no longer reach a live owner dispatch."""
 
 
 @runtime_checkable
 class CommandTransport(Protocol[TRef]):
     """Transport for forwarding method-like commands to a target."""
 
-    ref: TRef | None
+    target: TRef | None
 
     def _is_owner(self) -> bool | None: ...
     def send(self, method: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> None: ...
     def request(self, method: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any: ...
 
 
-class CommandDriver(Generic[TRef]):
+class CommandHandler(Generic[TRef]):
     """Replay transport commands onto a concrete target object."""
 
     def __init__(self, target: TRef) -> None:
         self.target = target
 
-    def dispatch(self, method: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    def invoke(self, method: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
         return getattr(self.target, method)(*args, **kwargs)
 
 
 class LocalTransport(Generic[TRef]):
     """In-process transport used for tests and synchronous replay."""
 
-    def __init__(self, driver: CommandDriver[TRef]) -> None:
-        self.driver = driver
-        self.ref = driver.target
+    def __init__(self, handler: CommandHandler[TRef]) -> None:
+        self.handler = handler
+        self.target = handler.target
 
     def _is_owner(self) -> bool:
         return True
 
     def send(self, method: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> None:
-        self.driver.dispatch(method, args, kwargs)
+        self.handler.invoke(method, args, kwargs)
 
     def request(self, method: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
-        return self.driver.dispatch(method, args, kwargs)
+        return self.handler.invoke(method, args, kwargs)
 
 
 class QueueTransport(Generic[TRef]):
@@ -63,13 +63,13 @@ class QueueTransport(Generic[TRef]):
         self,
         queue: Any,
         *,
-        ref: TRef | None = None,
+        target: TRef | None = None,
         target_id: Any = None,
         owner_pid: int | None = None,
         closed: Any | None = None,
     ) -> None:
         self.queue = queue
-        self.ref = ref
+        self.target = target
         self.target_id = target_id
         self.owner_pid = os.getpid() if owner_pid is None else owner_pid
         self.closed = mp.Event() if closed is None else closed
@@ -80,7 +80,7 @@ class QueueTransport(Generic[TRef]):
 
     def __getstate__(self) -> dict[str, Any]:
         state = self.__dict__.copy()
-        state['ref'] = None
+        state['target'] = None
         state['_reply_tls'] = None
         return state
 
@@ -88,7 +88,7 @@ class QueueTransport(Generic[TRef]):
     #     self.__dict__.update(state)
 
     def _is_owner(self) -> bool:
-        return self.ref is not None and os.getpid() == self.owner_pid
+        return self.target is not None and os.getpid() == self.owner_pid
 
     def _ensure_open(self) -> None:
         if self.closed.is_set():
@@ -96,7 +96,7 @@ class QueueTransport(Generic[TRef]):
 
     def send(self, method: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> None:
         if self._is_owner():
-            getattr(self.ref, method)(*args, **kwargs)
+            getattr(self.target, method)(*args, **kwargs)
             return
         try:
             self._ensure_open()
@@ -109,7 +109,7 @@ class QueueTransport(Generic[TRef]):
 
         Like ``multiprocessing.managers``, which keeps one connection per thread
         rather than a fresh one per call, we create the reply pipe once per
-        thread and reuse it. The paired send end is handed to the bridge once
+        thread and reuse it. The paired send end is handed to the dispatch once
         (``open_reply``); every later request just carries ``reply_id``, so no
         file descriptor is transferred per call.
         """
@@ -122,14 +122,14 @@ class QueueTransport(Generic[TRef]):
             reply_id = (os.getpid(), threading.get_ident(), id(self))
             self.queue.put(("open_reply", reply_id, send_end))
             # Keep send_end referenced: the queue feeder pickles it
-            # asynchronously, and the bridge writes replies to its transferred
+            # asynchronously, and the dispatch writes replies to its transferred
             # copy — we just must not GC/close ours out from under the feeder.
             tls.chan = chan = (reply_id, recv_end, send_end)
         return chan[0], chan[1]
 
     def request(self, method: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
         if self._is_owner():
-            return getattr(self.ref, method)(*args, **kwargs)
+            return getattr(self.target, method)(*args, **kwargs)
         self._ensure_open()  # check before touching the reply channel
         reply_id, recv_end = self._reply_channel()
         try:
@@ -145,47 +145,47 @@ class QueueTransport(Generic[TRef]):
             raise CommandTransportClosed("Command transport is closed.") from exc
 
 
-class QueueCommandBridge(Generic[TRef]):
+class QueueCommandDispatch(Generic[TRef]):
     """Drain queued commands and replay them onto registered local targets."""
 
-    def __init__(self, queue: Any | None = None, driver: CommandDriver[TRef] | None = None, *, target_id: Any = None, closed: Any | None = None) -> None:
+    def __init__(self, queue: Any | None = None, handler: CommandHandler[TRef] | None = None, *, target_id: Any = None, closed: Any | None = None) -> None:
         self.queue = mp.Queue() if queue is None else queue
         self.closed = mp.Event() if closed is None else closed
-        self.drivers: dict[Any, CommandDriver[Any]] = {}
-        if driver is not None:
-            # An explicit single driver keeps whatever key it was given (``None``
+        self.handlers: dict[Any, CommandHandler[Any]] = {}
+        if handler is not None:
+            # An explicit single handler keeps whatever key it was given (``None``
             # is the conventional "default target"); only register() auto-assigns.
-            self.drivers[target_id] = driver
+            self.handlers[target_id] = handler
         # Persistent reply ends, one per requesting worker-thread, keyed by the
         # reply_id sent in an ``open_reply`` message and reused for every reply.
         self._reply_ends: dict[Any, Any] = {}
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
 
-    def register(self, target: TRef | CommandDriver[TRef], *, target_id: Any = None) -> Any:
-        driver = target if isinstance(target, CommandDriver) else CommandDriver(target)
+    def register(self, target: TRef | CommandHandler[TRef], *, target_id: Any = None) -> Any:
+        handler = target if isinstance(target, CommandHandler) else CommandHandler(target)
         if target_id is None:
             # id() of the live target is unique and stable for its lifetime, and
             # travels to workers as a plain int — no shared counter to race on.
-            target_id = id(driver.target)
-        self.drivers[target_id] = driver
+            target_id = id(handler.target)
+        self.handlers[target_id] = handler
         return target_id
 
     def unregister(self, target_id: Any) -> None:
-        self.drivers.pop(target_id, None)
+        self.handlers.pop(target_id, None)
 
     def _dispatch(self, target_id: Any, method: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
         try:
-            driver = self.drivers[target_id]
+            handler = self.handlers[target_id]
         except KeyError as exc:
-            raise KeyError(f"No command bridge target registered for {target_id!r}.") from exc
-        return driver.dispatch(method, args, kwargs)
+            raise KeyError(f"No command dispatch target registered for {target_id!r}.") from exc
+        return handler.invoke(method, args, kwargs)
 
     def start(self) -> None:
         if self._thread is not None:
             return
         self.closed.clear()
-        thread = threading.Thread(target=self._run, name="mqdm-command-bridge", daemon=True)
+        thread = threading.Thread(target=self._run, name="mqdm-command-dispatch", daemon=True)
         thread.start()
         self._thread = thread
 
@@ -205,7 +205,7 @@ class QueueCommandBridge(Generic[TRef]):
                 except Exception:
                     # A fire-and-forget send that fails (e.g. a late update for
                     # an already-unregistered target, or the target method
-                    # raising) must not kill the bridge thread — that would
+                    # raising) must not kill the dispatch thread — that would
                     # silently drop every later command and hang any worker
                     # waiting on a request. Best-effort: drop it and continue.
                     pass
@@ -290,11 +290,11 @@ class CommandProxyMixin(Generic[TRef]):
     """Base mixin for proxies that forward method calls as commands."""
 
     @classmethod
-    def from_ref(cls: type[TProxy], ref: TRef, *, command_bridge=None) -> TProxy:
-        raise NotImplementedError(f"{cls.__name__}.from_ref() must be implemented")
+    def from_target(cls: type[TProxy], target: TRef, *, command_dispatch=None) -> TProxy:
+        raise NotImplementedError(f"{cls.__name__}.from_target() must be implemented")
 
     @property
-    def ref(self) -> TRef | None:
+    def target(self) -> TRef | None:
         return None
 
     def _proxy_is_owner(self) -> bool | None:
@@ -317,30 +317,30 @@ class CommandProxyMixin(Generic[TRef]):
         raise NotImplementedError
 
 
-class TransportCommandProxy(CommandProxyMixin[TRef], Generic[TRef]):
+class TransportProxy(CommandProxyMixin[TRef], Generic[TRef]):
     """Generic proxy backed by a CommandTransport."""
 
     def __init__(self, transport: CommandTransport[TRef]) -> None:
         self._transport = transport
 
     @classmethod
-    def from_ref(cls: type[TTransportProxy], ref: TRef, *, command_bridge=None) -> TTransportProxy:
-        if command_bridge is not None:
-            target_id = command_bridge.register(ref)
+    def from_target(cls: type[TTransportProxy], target: TRef, *, command_dispatch=None) -> TTransportProxy:
+        if command_dispatch is not None:
+            target_id = command_dispatch.register(target)
             return cls(QueueTransport(
-                command_bridge.queue,
-                ref=ref,
+                command_dispatch.queue,
+                target=target,
                 target_id=target_id,
-                closed=command_bridge.closed,
+                closed=command_dispatch.closed,
             ))
-        # No bridge: owner-local only. Use a direct transport rather than an
-        # orphan queue that no bridge drains (which would silently drop commands
+        # No dispatch: owner-local only. Use a direct transport rather than an
+        # orphan queue that no dispatch drains (which would silently drop commands
         # if the proxy were ever sent to a worker).
-        return cls(LocalTransport(CommandDriver(ref)))
+        return cls(LocalTransport(CommandHandler(target)))
 
     @property
-    def ref(self) -> TRef | None:
-        return self._transport.ref
+    def target(self) -> TRef | None:
+        return self._transport.target
 
     def _proxy_is_owner(self) -> bool | None:
         return self._transport._is_owner()
@@ -361,21 +361,21 @@ class TransportCommandProxy(CommandProxyMixin[TRef], Generic[TRef]):
     ) -> Any:
         return self._transport.request(method, args, kwargs)
 
-    def create_command_bridge(self) -> QueueCommandBridge[TRef]:
+    def create_command_dispatch(self) -> QueueCommandDispatch[TRef]:
         transport = self._transport
         if not isinstance(transport, QueueTransport):
             raise TypeError(
-                f"{type(self).__name__} cannot create a command bridge from "
+                f"{type(self).__name__} cannot create a command dispatch from "
                 f"{type(transport).__name__}."
             )
-        ref = transport.ref
-        if ref is None:
+        target = transport.target
+        if target is None:
             raise RuntimeError(
-                f"{type(self).__name__} can only create a command bridge in the owner process."
+                f"{type(self).__name__} can only create a command dispatch in the owner process."
             )
-        return QueueCommandBridge(
+        return QueueCommandDispatch(
             transport.queue,
-            CommandDriver(ref),
+            CommandHandler(target),
             target_id=transport.target_id,
             closed=transport.closed,
         )

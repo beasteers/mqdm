@@ -5,8 +5,8 @@ from rich.console import Console
 
 import mqdm as M
 from mqdm.backend import TaskState
-from mqdm.command_proxy import CommandDriver, CommandProxyMixin, CommandTransportClosed, LocalTransport, QueueCommandBridge, QueueTransport, TransportCommandProxy, exposed_methods_for, proxymethod
-from mqdm.progress import Progress, QueueProgressProxy
+from mqdm.command_proxy import CommandHandler, CommandProxyMixin, CommandTransportClosed, LocalTransport, QueueCommandDispatch, QueueTransport, TransportProxy, exposed_methods_for, proxymethod
+from mqdm.progress import Progress, ProgressProxy
 
 
 def test_load_task_restores_finished_metadata():
@@ -37,9 +37,9 @@ def test_convert_proxy_preserves_existing_tasks_in_shadow_state():
     snapshot = progress.dump_tasks()
     runtime = M.Runtime()
 
-    proxy = progress.convert_proxy(command_bridge=runtime._ensure_command_bridge())
+    proxy = progress.convert_proxy(command_dispatch=runtime._ensure_command_dispatch())
 
-    assert isinstance(proxy, QueueProgressProxy)
+    assert isinstance(proxy, ProgressProxy)
     assert proxy.dump_tasks() == snapshot
     assert set(proxy.dump_tasks()) == {first, second}
 
@@ -62,17 +62,17 @@ def test_load_task_advances_task_index():
     assert new_task_id == 8
 
 
-def test_runtime_install_command_bridge_starts_and_stops():
+def test_runtime_install_command_dispatch_starts_and_stops():
     runtime = M.Runtime()
     progress = Progress(disable=True)
     # proxy = progress.convert_proxy(runtime=runtime)
     runtime._ensure_process_backend(progress)
 
-    assert runtime.command_bridge is not None
+    assert runtime.command_dispatch is not None
 
-    runtime.shutdown_command_bridge()
+    runtime.shutdown_command_dispatch()
 
-    assert runtime.command_bridge is None
+    assert runtime.command_dispatch is None
 
 
 def test_progress_write_prints_to_own_console():
@@ -98,8 +98,8 @@ def test_runtime_get_pbar_converts_with_owning_runtime(monkeypatch):
         def start(self):
             return None
 
-    def fake_convert_proxy(*, command_bridge=None):
-        captured["command_bridge"] = command_bridge
+    def fake_convert_proxy(*, command_dispatch=None):
+        captured["command_dispatch"] = command_dispatch
         return Proxy()
 
     monkeypatch.setattr(progress, "convert_proxy", fake_convert_proxy)
@@ -108,7 +108,7 @@ def test_runtime_get_pbar_converts_with_owning_runtime(monkeypatch):
 
     assert isinstance(proxy, Proxy)
     assert runtime.pbar is proxy
-    assert captured["command_bridge"] is runtime.command_bridge
+    assert captured["command_dispatch"] is runtime.command_dispatch
 
 
 class _MinimalBackend:
@@ -186,7 +186,7 @@ def test_runtime_process_mode_rejects_non_convertible_backend():
 def test_queue_progress_proxy_rich_console_uses_owner_renderable():
     progress = Progress(disable=True)
     progress.add_task("demo", total=1, completed=0)
-    proxy = QueueProgressProxy.from_ref(progress)
+    proxy = ProgressProxy.from_target(progress)
 
     renderables = list(proxy.__rich_console__(Console(), None))
 
@@ -214,7 +214,7 @@ def test_queue_transport_remote_queues_send_commands():
     assert q.get() == ("send", None, "write", ("hello",), {})
 
 
-def test_queue_command_bridge_replays_commands():
+def test_queue_command_dispatch_replays_commands():
     target = SimpleNamespace(calls=[])
 
     def write(*args, **kwargs):
@@ -222,20 +222,20 @@ def test_queue_command_bridge_replays_commands():
 
     target.write = write
     q = __import__("queue").Queue()
-    bridge = QueueCommandBridge(q, CommandDriver(target))
-    bridge.start()
+    dispatch = QueueCommandDispatch(q, CommandHandler(target))
+    dispatch.start()
     q.put(("send", None, "write", ("hello",), {"markup": False}))
     import time
     deadline = time.time() + 1
     while not target.calls and time.time() < deadline:
         time.sleep(0.01)
-    bridge.stop()
+    dispatch.stop()
 
     assert target.calls == [(("hello",), {"markup": False})]
 
 
-def test_queue_command_bridge_survives_failing_send():
-    # A fire-and-forget send that raises must not kill the bridge thread, or
+def test_queue_command_dispatch_survives_failing_send():
+    # A fire-and-forget send that raises must not kill the dispatch thread, or
     # every later command would be silently dropped (and request-callers hang).
     import time
 
@@ -244,19 +244,19 @@ def test_queue_command_bridge_survives_failing_send():
     target.ok = lambda x: target.calls.append(x)
 
     q = __import__("queue").Queue()
-    bridge = QueueCommandBridge(q, CommandDriver(target))
-    bridge.start()
+    dispatch = QueueCommandDispatch(q, CommandHandler(target))
+    dispatch.start()
     try:
-        q.put(("send", None, "boom", (), {}))       # raises inside the bridge
+        q.put(("send", None, "boom", (), {}))       # raises inside the dispatch
         q.put(("send", None, "ok", (7,), {}))        # must still be delivered
         deadline = time.time() + 1
         while not target.calls and time.time() < deadline:
             time.sleep(0.01)
 
-        assert bridge._thread is not None and bridge._thread.is_alive()
+        assert dispatch._thread is not None and dispatch._thread.is_alive()
         assert target.calls == [7]
     finally:
-        bridge.stop()
+        dispatch.stop()
 
 
 def test_queue_transport_reuses_one_reply_channel():
@@ -264,19 +264,19 @@ def test_queue_transport_reuses_one_reply_channel():
     # not allocate one per call (the whole point of the hybrid).
     target = SimpleNamespace(echo=lambda v: v)
     q = __import__("queue").Queue()
-    bridge = QueueCommandBridge(q, CommandDriver(target), target_id="t")
-    bridge.start()
-    transport = QueueTransport(q, target_id="t")  # ref=None -> routed through queue
+    dispatch = QueueCommandDispatch(q, CommandHandler(target), target_id="t")
+    dispatch.start()
+    transport = QueueTransport(q, target_id="t")  # target=None -> routed through queue
     try:
         assert transport.request("echo", (1,), {}) == 1
         assert transport.request("echo", (2,), {}) == 2
         assert transport.request("echo", (3,), {}) == 3
-        assert len(bridge._reply_ends) == 1  # one channel, reused
+        assert len(dispatch._reply_ends) == 1  # one channel, reused
     finally:
-        bridge.stop()
+        dispatch.stop()
 
 
-def test_queue_command_bridge_routes_multiple_targets_over_one_queue():
+def test_queue_command_dispatch_routes_multiple_targets_over_one_queue():
     first = SimpleNamespace(calls=[])
     second = SimpleNamespace(calls=[])
 
@@ -284,10 +284,10 @@ def test_queue_command_bridge_routes_multiple_targets_over_one_queue():
     second.write = lambda *args, **kwargs: second.calls.append((args, kwargs))
 
     q = __import__("queue").Queue()
-    bridge = QueueCommandBridge(q)
-    bridge.register(first, target_id="first")
-    bridge.register(second, target_id="second")
-    bridge.start()
+    dispatch = QueueCommandDispatch(q)
+    dispatch.register(first, target_id="first")
+    dispatch.register(second, target_id="second")
+    dispatch.start()
     q.put(("send", "first", "write", ("one",), {"markup": False}))
     q.put(("send", "second", "write", ("two",), {"markup": True}))
 
@@ -295,7 +295,7 @@ def test_queue_command_bridge_routes_multiple_targets_over_one_queue():
     deadline = time.time() + 1
     while (not first.calls or not second.calls) and time.time() < deadline:
         time.sleep(0.01)
-    bridge.stop()
+    dispatch.stop()
 
     assert first.calls == [(("one",), {"markup": False})]
     assert second.calls == [(("two",), {"markup": True})]
@@ -312,7 +312,7 @@ def test_command_proxy_owner_only_and_worker_only_flags():
         def worker(self, value):
             self.calls.append(("worker", value))
 
-    class Proxy(TransportCommandProxy):
+    class Proxy(TransportProxy):
         owner = proxymethod(Target.owner, expect_reply=False, owner_only=True)
         worker = proxymethod(Target.worker, expect_reply=False, worker_only=True)
 
@@ -324,8 +324,8 @@ def test_command_proxy_owner_only_and_worker_only_flags():
             return self._is_owner
 
     target = Target()
-    owner_proxy = Proxy(LocalTransport(CommandDriver(target)), is_owner=True)
-    worker_proxy = Proxy(LocalTransport(CommandDriver(target)), is_owner=False)
+    owner_proxy = Proxy(LocalTransport(CommandHandler(target)), is_owner=True)
+    worker_proxy = Proxy(LocalTransport(CommandHandler(target)), is_owner=False)
 
     owner_proxy.owner(1)
     owner_proxy.worker(2)
@@ -337,60 +337,60 @@ def test_command_proxy_owner_only_and_worker_only_flags():
 
 def test_queue_progress_proxy_refuses_non_owner_render():
     q = __import__("queue").SimpleQueue()
-    proxy = QueueProgressProxy(QueueTransport(q))
+    proxy = ProgressProxy(QueueTransport(q))
 
     with pytest.raises(RuntimeError, match="owner process"):
         list(proxy.__rich_console__(Console(), None))
 
 
-def test_command_proxy_mixin_from_ref_requires_subclass_override():
+def test_command_proxy_mixin_from_target_requires_subclass_override():
     class Proxy(CommandProxyMixin[object]):
         pass
 
     with pytest.raises(NotImplementedError, match="must be implemented"):
-        Proxy.from_ref(object())
+        Proxy.from_target(object())
 
 
-def test_transport_command_proxy_create_command_bridge_requires_owner_ref():
-    proxy = QueueProgressProxy(QueueTransport(__import__("queue").SimpleQueue()))
+def test_transport_proxy_create_command_dispatch_requires_owner_target():
+    proxy = ProgressProxy(QueueTransport(__import__("queue").SimpleQueue()))
 
     with pytest.raises(RuntimeError, match="owner process"):
-        proxy.create_command_bridge()
+        proxy.create_command_dispatch()
 
 
-def test_transport_command_proxy_from_ref_uses_shared_command_bridge():
+def test_transport_proxy_from_target_uses_shared_command_dispatch():
     runtime = M.Runtime()
     progress = Progress(disable=True)
-    bridge = runtime._ensure_command_bridge()
+    dispatch = runtime._ensure_command_dispatch()
 
-    proxy = QueueProgressProxy.from_ref(progress, command_bridge=bridge)
+    proxy = ProgressProxy.from_target(progress, command_dispatch=dispatch)
 
-    assert runtime.command_bridge is not None
-    assert runtime.command_bridge.queue is proxy._transport.queue
+    assert runtime.command_dispatch is not None
+    assert runtime.command_dispatch.queue is proxy._transport.queue
     assert proxy._transport.target_id == id(progress)
-    assert id(progress) in runtime.command_bridge.drivers
+    assert id(progress) in runtime.command_dispatch.handlers
 
 
-def test_process_pbar_teardown_releases_command_bridge():
+def test_process_pbar_teardown_releases_command_dispatch():
     runtime = M.Runtime()
 
     runtime.get_pbar(pool_mode="process")
-    first = runtime.command_bridge
+    first = runtime.command_dispatch
     assert first is not None and first._thread is not None
 
     runtime.clear_pbar(force=True)
-    assert runtime.command_bridge is None   # torn down with the pbar
-    assert first._thread is None            # bridge thread stopped
+    assert runtime.command_dispatch is None   # torn down with the pbar
+    assert first._thread is None            # dispatch thread stopped
 
-    # A later process pbar gets a fresh bridge, not the dead one — so per-worker
-    # reply ends and per-pool driver registrations don't accumulate across pools.
+    # A later process pbar gets a fresh dispatch, not the dead one — so per-worker
+    # reply ends and per-pool handler registrations don't accumulate across pools.
     runtime.get_pbar(pool_mode="process")
-    assert runtime.command_bridge is not None
-    assert runtime.command_bridge is not first
+    assert runtime.command_dispatch is not None
+    assert runtime.command_dispatch is not first
     runtime.clear_pbar(force=True)
 
 
-def test_transport_command_proxy_dispatches_send_and_request():
+def test_transport_proxy_invokes_send_and_request():
     class Target:
         def __init__(self):
             self.calls = []
@@ -402,33 +402,33 @@ def test_transport_command_proxy_dispatches_send_and_request():
             self.calls.append(("echo", value))
             return value
 
-    class Proxy(TransportCommandProxy):
+    class Proxy(TransportProxy):
         record = proxymethod(Target.record, expect_reply=False)
         echo = proxymethod(Target.echo)
 
     target = Target()
-    proxy = Proxy(LocalTransport(CommandDriver(target)))
+    proxy = Proxy(LocalTransport(CommandHandler(target)))
 
     assert proxy.record(7) is None
     assert proxy.echo(9) == 9
     assert target.calls == [("record", 7), ("echo", 9)]
 
 
-def test_queue_transport_request_fails_fast_when_bridge_is_closed():
+def test_queue_transport_request_fails_fast_when_dispatch_is_closed():
     q = __import__("queue").SimpleQueue()
-    bridge = QueueCommandBridge(q)
-    transport = QueueTransport(q, closed=bridge.closed)
-    bridge.closed.set()
+    dispatch = QueueCommandDispatch(q)
+    transport = QueueTransport(q, closed=dispatch.closed)
+    dispatch.closed.set()
 
     with pytest.raises(CommandTransportClosed, match="closed"):
         transport.request("echo", (1,), {})
 
 
-def test_queue_transport_send_fails_fast_when_bridge_is_closed():
+def test_queue_transport_send_fails_fast_when_dispatch_is_closed():
     q = __import__("queue").SimpleQueue()
-    bridge = QueueCommandBridge(q)
-    transport = QueueTransport(q, closed=bridge.closed)
-    bridge.closed.set()
+    dispatch = QueueCommandDispatch(q)
+    transport = QueueTransport(q, closed=dispatch.closed)
+    dispatch.closed.set()
 
     with pytest.raises(CommandTransportClosed, match="closed"):
         transport.send("write", ("hello",), {})
@@ -440,7 +440,7 @@ def test_bar_close_ignores_closed_command_transport():
     q = __import__("queue").SimpleQueue()
     closed = __import__("threading").Event()
     closed.set()
-    runtime.pbar = QueueProgressProxy(QueueTransport(q, target_id=0, closed=closed))
+    runtime.pbar = ProgressProxy(QueueTransport(q, target_id=0, closed=closed))
 
     bar.close()
 
@@ -455,7 +455,7 @@ def test_exposed_methods_for_uses_proxy_wrapped_methods():
         def ask(self):
             return 1
 
-    class Proxy(TransportCommandProxy):
+    class Proxy(TransportProxy):
         send_only = proxymethod(Target.send_only, expect_reply=False)
         ask = proxymethod(Target.ask)
 

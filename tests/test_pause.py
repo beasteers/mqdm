@@ -38,7 +38,7 @@ def test_runtime_atexit_clears_private_state():
 
     assert runtime.pbar is None
     assert not runtime.instances
-    assert runtime.command_bridge is None
+    assert runtime.command_dispatch is None
 
 
 def test_runtime_atexit_uninstalls_logging():
