@@ -64,6 +64,12 @@ class Progress(progress.Progress):
     multiprocess = False
     paused = False
 
+    # ---------------------------------------------------------------------------- #
+    #                           Construction / Bootstrap                           #
+    #  these hooks preserve enough init state to rebuild Progress locally or in a  #
+    #  manager-backed proxy without depending on Rich's in-process-only objects.   #
+    # ---------------------------------------------------------------------------- #
+
     def __init__(self, *columns, _tasks=None, _task_index=None, _pause_event=None, silent=False, **kw):
         # Record init options before injecting the silent console so convert_proxy
         # round-trips `silent` (and re-creates the sink console on the other side)
@@ -77,6 +83,8 @@ class Progress(progress.Progress):
         if _tasks is not None:
             self._tasks = {task_id: self._load_task(TaskSnapshot.from_dict(task)) for task_id, task in _tasks.items()}
         self._task_index = progress.TaskID(_task_index or 0)
+
+    # -------------------------------- Rich API --------------------------------- #
 
     def write(self, *args, **kw):
         """Print above the live progress display.
@@ -92,7 +100,7 @@ class Progress(progress.Progress):
         if 'description' in kw and kw['description'] is None:  # ignore None descriptions
             kw.pop('description')
         return super().update(task_id, **kw)
-    
+
     @wraps(progress.Progress.update)
     def try_update(self, task_id, **kw):
         try:
@@ -101,6 +109,37 @@ class Progress(progress.Progress):
             pass
 
     update_ = try_update
+
+    # ---------------------------------------------------------------------------- #
+    #                           Task Lifecycle / Mutation                          #
+    #  these overrides funnel task creation and lifecycle through mqdm-owned       #
+    #  helpers so local and proxied bars can share the same task state model.      #
+    # ---------------------------------------------------------------------------- #
+
+    def _start_task(self, task):
+        if task.start_time is None:
+            task.start_time = self.get_time()
+
+    def _new_task(self,
+                  description: str='',
+                  start: bool = True,
+                  total: float|None = None,
+                  completed: int = 0,
+                  visible: bool = True,
+                  **fields):
+        task = Task(
+            self._task_index,
+            description,
+            total,
+            completed,
+            visible=visible,
+            fields=fields,
+            _get_time=self.get_time,
+            _lock=self._lock,
+        )
+        start and self._start_task(task)
+        self._task_index = progress.TaskID(int(self._task_index) + 1)
+        return task
 
     def add_task(
         self,
@@ -126,47 +165,21 @@ class Progress(progress.Progress):
         with self._lock:
             self._tasks.clear()
 
-    def pop_task(self, task_id, remove=None):
-        """Close a task and return its serialized data."""
-        try:
-            self.stop_task(task_id)
-            data = self.dump_task(task_id)
-            if remove is None:
-                remove = self._tasks[task_id].fields.get('transient', False)
-            if remove:
-                self.remove_task(task_id)
-            return data
-        except KeyError as e:
-            pass
+    def new_task(self,
+                  description: str='',
+                  start: bool = True,
+                  total: float|None = None,
+                  completed: int = 0,
+                  visible: bool = True,
+                  **fields):
+        with self._lock:
+            return self._dump_task(self._new_task(description or '', start, total, completed, visible, **fields)).to_dict()
 
-    def convert_proxy(self, runtime=None) -> 'ProgressProxy':
-        """Convert to a multiprocessing proxy object so methods can be called in another process."""
-        runtime = runtime or M._current_runtime()
-        started = self.live.is_started
-        tasks = self.dump_tasks()
-        for task_id in tasks:
-            self.remove_task(task_id)
-        started or self.start()
-        self.refresh()
-        self.stop()
-
-        try:
-            proxy = runtime.get_manager().mqdm_Progress(
-                *self.columns,
-                _tasks=tasks,
-                _task_index=self._task_index,
-                **self._init_options,
-            )
-        except Exception:
-            for task_id in sorted(tasks):
-                self.load_task(tasks[task_id], start=False)
-            if started:
-                self.start()
-            raise
-        proxy.multiprocess = True
-        if started:
-            proxy.start()
-        return proxy
+    # ---------------------------------------------------------------------------- #
+    #                        Task Snapshot / Serialization                         #
+    #  these helpers reduce Rich tasks to transportable snapshots so state can be  #
+    #  exported, restored, and mirrored in another process.                        #
+    # ---------------------------------------------------------------------------- #
 
     def dump_tasks(self):
         with self._lock:
@@ -197,7 +210,7 @@ class Progress(progress.Progress):
 
     def _dump_task(self, task):
         return TaskSnapshot.from_task(task)
-    
+
     def _load_task(self, snapshot: TaskSnapshot, start=True):
         data = snapshot.to_dict()
         _progress = data.pop('_progress') or []
@@ -210,10 +223,6 @@ class Progress(progress.Progress):
         if _progress:
             task._progress = deque([progress.ProgressSample(*s) for s in _progress], maxlen=1000)
         return task
-    
-    def _start_task(self, task):
-        if task.start_time is None:
-            task.start_time = self.get_time()
 
     def load_task(self, task: dict, start=True):
         with self._lock:
@@ -223,36 +232,53 @@ class Progress(progress.Progress):
                 self._task_index = progress.TaskID(task.id+1)
         self.refresh()
 
-    def _new_task(self, 
-                  description: str='',
-                  start: bool = True,
-                  total: float|None = None,
-                  completed: int = 0,
-                  visible: bool = True,
-                  **fields):
-        task = Task(
-            self._task_index,
-            description,
-            total,
-            completed,
-            visible=visible,
-            fields=fields,
-            _get_time=self.get_time,
-            _lock=self._lock,
-        )
-        start and self._start_task(task)
-        self._task_index = progress.TaskID(int(self._task_index) + 1)
-        return task
+    def pop_task(self, task_id, remove=None):
+        """Close a task and return its serialized data."""
+        try:
+            self.stop_task(task_id)
+            data = self.dump_task(task_id)
+            if remove is None:
+                remove = self._tasks[task_id].fields.get('transient', False)
+            if remove:
+                self.remove_task(task_id)
+            return data
+        except KeyError as e:
+            pass
 
-    def new_task(self,
-                  description: str='',
-                  start: bool = True,
-                  total: float|None = None,
-                  completed: int = 0,
-                  visible: bool = True,
-                  **fields):
-        with self._lock:
-            return self._dump_task(self._new_task(description or '', start, total, completed, visible, **fields)).to_dict()
+    # ---------------------------------------------------------------------------- #
+    #                        Multiprocessing Backend Upgrade                       #
+    #  this section moves a local Rich-backed Progress into a manager-backed       #
+    #  proxy while preserving enough state to restart rendering on either side.    #
+    # ---------------------------------------------------------------------------- #
+
+    def convert_proxy(self, runtime=None) -> 'ProgressProxy':
+        """Convert to a multiprocessing proxy object so methods can be called in another process."""
+        runtime = runtime or M._current_runtime()
+        started = self.live.is_started
+        tasks = self.dump_tasks()
+        for task_id in tasks:
+            self.remove_task(task_id)
+        started or self.start()
+        self.refresh()
+        self.stop()
+
+        try:
+            proxy = runtime.get_manager().mqdm_Progress(
+                *self.columns,
+                _tasks=tasks,
+                _task_index=self._task_index,
+                **self._init_options,
+            )
+        except Exception:
+            for task_id in sorted(tasks):
+                self.load_task(tasks[task_id], start=False)
+            if started:
+                self.start()
+            raise
+        proxy.multiprocess = True
+        if started:
+            proxy.start()
+        return proxy
 
 
 
