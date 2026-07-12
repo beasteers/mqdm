@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import io
 import logging
-import multiprocessing as mp
 import os
 import queue
 import random
@@ -302,24 +301,6 @@ def _pool_thread(
         })
 
 
-def _dispatch_events(event_queue: Any, result_queue: queue.Queue, stop: threading.Event) -> None:
-    """Drain the multiprocessing event queue as fast as possible.
-
-    Worker processes emit log/print/task events directly into a process-safe
-    queue. The Textual UI should not poll that queue itself at frame cadence;
-    doing so can let the pipe back up and block workers on ``put()``. A small
-    background dispatch keeps the OS pipe drained and hands events to the UI over
-    a plain in-process queue.
-    """
-    while not stop.is_set():
-        try:
-            result_queue.put(event_queue.get(timeout=0.1))
-        except queue.Empty:
-            continue
-        except (EOFError, OSError):
-            break
-
-
 def _detail_panel(title: str, body: Any, *, title_style: str = TITLE_STYLE) -> Group:
     if isinstance(body, str):
         body = Text(body, style=MUTED_STYLE)
@@ -432,36 +413,24 @@ class ControlRoomApp(App[None]):
         self.refresh_per_second = refresh_per_second
         self.queue_row_map: list[int] = []
 
-        # This event stream is separate from mqdm's command dispatch. A plain
-        # multiprocessing queue is enough here; no manager/proxy indirection is
-        # required just to forward structured runtime events into the UI.
-        self.event_queue: mp.Queue = mp.Queue()
-        # A plain mqdm.Runtime with a queue sink — no subclass needed. Every event
-        # a worker emits (print/log + task lifecycle) lands on this queue, tagged
-        # with worker + task_index context.
-        self.runtime = mqdm.Runtime(on_event=self.event_queue.put)
+        self.local_events: queue.Queue = queue.Queue()
+        self.stream = mqdm.event_stream.EventStream(self.local_events.put)
+        self.runtime = self.stream.runtime
         if install_logging:
             self.runtime.install_logging(logger=logger, level=log_level, capture_warnings="process")
 
-        self.local_events: queue.Queue = queue.Queue()
-        self.stop_dispatch = threading.Event()
         self.pool_thread = threading.Thread(
             target=_pool_thread,
             kwargs={
                 "fn": fn,
                 "jobs": [spec["item"] for spec in self.specs],
                 "runtime": self.runtime,
-                "event_queue": self.event_queue,
+                "event_queue": self.local_events,
                 "desc": desc,
                 "n_workers": n_workers,
                 "pool_mode": pool_mode,
                 "fn_kw": fn_kw,
             },
-            daemon=True,
-        )
-        self.dispatch_thread = threading.Thread(
-            target=_dispatch_events,
-            args=(self.event_queue, self.local_events, self.stop_dispatch),
             daemon=True,
         )
 
@@ -484,8 +453,8 @@ class ControlRoomApp(App[None]):
     def on_mount(self) -> None:
         if self.specs:
             self.selected_item_id = self.specs[0]["item_id"]
+        self.stream.start()
         self.pool_thread.start()
-        self.dispatch_thread.start()
         self.set_interval(1 / max(self.refresh_hz, 1), self._poll_events)
         # Paint the progress pane on a clock (like Progress's own Live refresh
         # thread), decoupled from event arrival, so time-based columns animate
@@ -494,14 +463,10 @@ class ControlRoomApp(App[None]):
         self.call_after_refresh(self._refresh_all)
 
     def on_unmount(self) -> None:
-        self.stop_dispatch.set()
         if self.pool_thread.is_alive():
             self.pool_thread.join(timeout=1)
-        if self.dispatch_thread.is_alive():
-            self.dispatch_thread.join(timeout=1)
+        self.stream.stop()
         self.runtime.uninstall_logging()
-        self.event_queue.cancel_join_thread()
-        self.event_queue.close()
         self.runtime.atexit()
 
     def action_queue_up(self) -> None:
