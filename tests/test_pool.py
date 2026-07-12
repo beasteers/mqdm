@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from mqdm.pool import _submit_next
+from mqdm._process_pool_keyboard import process_worker_keyboard_interrupt
 
 
 class _DummyExecutor:
@@ -39,3 +40,22 @@ def test_submit_next_grows_total_when_plan_total_is_unknown():
     assert plan.discovered_total == 1
     assert plan.submitted == 1
     assert pbar.calls == [{"started": 1, "total": 1}]
+
+
+class _InterruptingQueue:
+    def get(self, block=True):
+        raise KeyboardInterrupt
+
+
+class _UnusedResultQueue:
+    def put(self, value):
+        raise AssertionError("idle interrupt should exit before reporting a result")
+
+
+def test_process_worker_keyboard_interrupt_exits_cleanly_when_interrupted_while_idle():
+    process_worker_keyboard_interrupt(
+        _InterruptingQueue(),
+        _UnusedResultQueue(),
+        initializer=None,
+        initargs=(),
+    )

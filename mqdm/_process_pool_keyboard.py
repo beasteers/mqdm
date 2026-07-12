@@ -31,7 +31,14 @@ def _sendback_result(result_queue, work_id, result=None, exception=None, exit_pi
 
 def process_worker_keyboard_interrupt(call_queue, result_queue, initializer, initargs, max_tasks=None):
     """Process-pool worker that reports a KeyboardInterrupt like any other
-    exception and then exits, letting the parent shut the pool down cleanly."""
+    exception and then exits, letting the parent shut the pool down cleanly.
+
+    ``KeyboardInterrupt`` can arrive while the worker is idle in
+    ``call_queue.get()`` as the parent is tearing the pool down. Treat that as
+    a normal worker-exit path instead of letting it escape from the worker
+    bootstrap, which can leave pool shutdown hanging on an apparently "stuck"
+    idle child.
+    """
     if initializer is not None:
         try:
             initializer(*initargs)
@@ -41,7 +48,10 @@ def process_worker_keyboard_interrupt(call_queue, result_queue, initializer, ini
     num_tasks = 0
     exit_pid = None
     while True:
-        call_item = call_queue.get(block=True)
+        try:
+            call_item = call_queue.get(block=True)
+        except KeyboardInterrupt:
+            return
         if call_item is None:
             result_queue.put(os.getpid())
             return

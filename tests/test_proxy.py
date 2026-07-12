@@ -5,7 +5,7 @@ from rich.console import Console
 
 import mqdm as M
 from mqdm.backend import TaskState
-from mqdm.command_proxy import CommandDriver, CommandProxyMixin, LocalTransport, QueueCommandBridge, QueueTransport, TransportCommandProxy, exposed_methods_for, proxymethod
+from mqdm.command_proxy import CommandDriver, CommandProxyMixin, CommandTransportClosed, LocalTransport, QueueCommandBridge, QueueTransport, TransportCommandProxy, exposed_methods_for, proxymethod
 from mqdm.progress import Progress, QueueProgressProxy
 
 
@@ -351,6 +351,39 @@ def test_transport_command_proxy_dispatches_send_and_request():
     assert proxy.record(7) is None
     assert proxy.echo(9) == 9
     assert target.calls == [("record", 7), ("echo", 9)]
+
+
+def test_queue_transport_request_fails_fast_when_bridge_is_closed():
+    q = __import__("queue").SimpleQueue()
+    bridge = QueueCommandBridge(q)
+    transport = QueueTransport(q, closed=bridge.closed)
+    bridge.closed.set()
+
+    with pytest.raises(CommandTransportClosed, match="closed"):
+        transport.request("echo", (1,), {})
+
+
+def test_queue_transport_send_fails_fast_when_bridge_is_closed():
+    q = __import__("queue").SimpleQueue()
+    bridge = QueueCommandBridge(q)
+    transport = QueueTransport(q, closed=bridge.closed)
+    bridge.closed.set()
+
+    with pytest.raises(CommandTransportClosed, match="closed"):
+        transport.send("write", ("hello",), {})
+
+
+def test_bar_close_ignores_closed_command_transport():
+    runtime = M.Runtime()
+    bar = M.mqdm(range(1), runtime=runtime)
+    q = __import__("queue").SimpleQueue()
+    closed = __import__("threading").Event()
+    closed.set()
+    runtime.pbar = QueueProgressProxy(QueueTransport(q, target_id=0, closed=closed))
+
+    bar.close()
+
+    assert hash(bar) not in runtime.instances
 
 
 def test_exposed_methods_for_uses_proxy_wrapped_methods():

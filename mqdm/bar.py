@@ -11,6 +11,7 @@ from multiprocessing.managers import RemoteError
 from .runtime import Runtime, DEFAULT_REFRESH_PER_SECOND
 from . import utils
 from .executor import _get_local
+from .command_proxy import CommandTransportClosed
 import mqdm as M
 
 if TYPE_CHECKING:
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
 # finalizing its bars as the pool shuts down after an error. Updates to it are
 # best-effort at that point, so these are swallowed during teardown.
 _BACKEND_GONE = (RemoteError, EOFError, OSError)
+_BACKEND_CLOSED = _BACKEND_GONE + (CommandTransportClosed,)
 
 # Globally disable mqdm using environment variable. 
 DISABLED = (os.getenv("MQDM_DISABLED") or "").lower() in ("1", "true", "yes", "y")
@@ -411,7 +413,7 @@ class mqdm(Generic[T]):
                 self._task_dict = pbar.pop_task(self.task_id, remove=remove)
             self.runtime.remove_instance(self)
             self.runtime.clear_pbar(strict=False)
-        except _BACKEND_GONE:
+        except _BACKEND_CLOSED:
             # Shared manager/proxy already torn down (e.g. worker shutdown after
             # a pool error). Detaching is best-effort, so drop it rather than
             # spewing "Exception ignored in" during generator finalization.

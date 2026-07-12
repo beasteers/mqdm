@@ -11,6 +11,11 @@ from typing import Any, Generic, Protocol, TypeVar, runtime_checkable
 TRef = TypeVar("TRef")
 TProxy = TypeVar("TProxy", bound="CommandProxyMixin[Any]")
 TTransportProxy = TypeVar("TTransportProxy", bound="TransportCommandProxy[Any]")
+_REQUEST_POLL_INTERVAL = 0.1
+
+
+class CommandTransportClosed(RuntimeError):
+    """Raised when a proxy transport can no longer reach a live owner bridge."""
 
 
 @runtime_checkable
@@ -61,11 +66,13 @@ class QueueTransport(Generic[TRef]):
         ref: TRef | None = None,
         target_id: Any = None,
         owner_pid: int | None = None,
+        closed: Any | None = None,
     ) -> None:
         self.queue = queue
         self.ref = ref
         self.target_id = target_id
         self.owner_pid = os.getpid() if owner_pid is None else owner_pid
+        self.closed = mp.Event() if closed is None else closed
 
     def __getstate__(self) -> dict[str, Any]:
         state = self.__dict__.copy()
@@ -78,22 +85,36 @@ class QueueTransport(Generic[TRef]):
     def _is_owner(self) -> bool:
         return self.ref is not None and os.getpid() == self.owner_pid
 
+    def _ensure_open(self) -> None:
+        if self.closed.is_set():
+            raise CommandTransportClosed("Command transport is closed.")
+
     def send(self, method: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> None:
         if self._is_owner():
             getattr(self.ref, method)(*args, **kwargs)
             return
-        self.queue.put(("send", self.target_id, method, args, kwargs))
+        try:
+            self._ensure_open()
+            self.queue.put(("send", self.target_id, method, args, kwargs))
+        except (BrokenPipeError, EOFError, OSError, ValueError) as exc:
+            raise CommandTransportClosed("Command transport is closed.") from exc
 
     def request(self, method: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
         if self._is_owner():
             return getattr(self.ref, method)(*args, **kwargs)
         recv_end, send_end = mp.Pipe(duplex=False)
         try:
+            self._ensure_open()
             self.queue.put(("request", self.target_id, method, args, kwargs, send_end))
-            ok, payload = recv_end.recv()
-            if ok:
-                return payload
-            raise payload
+            while True:
+                if recv_end.poll(_REQUEST_POLL_INTERVAL):
+                    ok, payload = recv_end.recv()
+                    if ok:
+                        return payload
+                    raise payload
+                self._ensure_open()
+        except (BrokenPipeError, EOFError, OSError, ValueError) as exc:
+            raise CommandTransportClosed("Command transport is closed.") from exc
         finally:
             recv_end.close()
             send_end.close()
@@ -102,8 +123,9 @@ class QueueTransport(Generic[TRef]):
 class QueueCommandBridge(Generic[TRef]):
     """Drain queued commands and replay them onto registered local targets."""
 
-    def __init__(self, queue: Any | None = None, driver: CommandDriver[TRef] | None = None, *, target_id: Any = None) -> None:
+    def __init__(self, queue: Any | None = None, driver: CommandDriver[TRef] | None = None, *, target_id: Any = None, closed: Any | None = None) -> None:
         self.queue = mp.Queue() if queue is None else queue
+        self.closed = mp.Event() if closed is None else closed
         self.drivers: dict[Any, CommandDriver[Any]] = {}
         self._next_target_id = 0
         if driver is not None:
@@ -136,6 +158,7 @@ class QueueCommandBridge(Generic[TRef]):
     def start(self) -> None:
         if self._thread is not None:
             return
+        self.closed.clear()
         thread = threading.Thread(target=self._run, name="mqdm-command-bridge", daemon=True)
         thread.start()
         self._thread = thread
@@ -166,6 +189,7 @@ class QueueCommandBridge(Generic[TRef]):
     def stop(self) -> None:
         if self._thread is None:
             return
+        self.closed.set()
         self._stop_event.set()
         self.queue.put(None)
         self._thread.join(timeout=1.0)
@@ -251,7 +275,12 @@ class TransportCommandProxy(CommandProxyMixin[TRef], Generic[TRef]):
     def from_ref(cls: type[TTransportProxy], ref: TRef, *, command_bridge=None) -> TTransportProxy:
         if command_bridge is not None:
             target_id = command_bridge.register(ref)
-            return cls(QueueTransport(command_bridge.queue, ref=ref, target_id=target_id))
+            return cls(QueueTransport(
+                command_bridge.queue,
+                ref=ref,
+                target_id=target_id,
+                closed=command_bridge.closed,
+            ))
         return cls(QueueTransport(mp.Queue(), ref=ref))
 
     @property
@@ -289,4 +318,9 @@ class TransportCommandProxy(CommandProxyMixin[TRef], Generic[TRef]):
             raise RuntimeError(
                 f"{type(self).__name__} can only create a command bridge in the owner process."
             )
-        return QueueCommandBridge(transport.queue, CommandDriver(ref), target_id=transport.target_id)
+        return QueueCommandBridge(
+            transport.queue,
+            CommandDriver(ref),
+            target_id=transport.target_id,
+            closed=transport.closed,
+        )

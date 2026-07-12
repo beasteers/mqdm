@@ -472,6 +472,7 @@ class Runtime:
         bridge = self.command_bridge
         if bridge is None:
             return
+        bridge.closed.set()
         try:
             bridge.stop()
         finally:
@@ -479,6 +480,9 @@ class Runtime:
 
     def atexit(self) -> None:
         self.uninstall_logging()
+        bridge = self.command_bridge
+        if bridge is not None:
+            bridge.closed.set()
         self.close_instances()
         self.shutdown_command_bridge()
 

@@ -262,7 +262,7 @@ def _pool_thread(
     fn: Callable[..., Any],
     jobs: list[Any],
     runtime: mqdm.Runtime,
-    result_queue: queue.Queue,
+    event_queue: Any,
     desc: str,
     n_workers: int,
     pool_mode: str,
@@ -294,23 +294,30 @@ def _pool_thread(
             },
             **(fn_kw or {}),
         ))
-        result_queue.put({"type": "pool_results", "results": results})
+        event_queue.put({"type": "pool_results", "results": results})
     except BaseException:
-        result_queue.put({
+        event_queue.put({
             "type": "pool_error",
             "traceback": traceback.format_exc(),
         })
 
 
 def _bridge_events(event_queue: Any, result_queue: queue.Queue, stop: threading.Event) -> None:
+    """Drain the multiprocessing event queue as fast as possible.
+
+    Worker processes emit log/print/task events directly into a process-safe
+    queue. The Textual UI should not poll that queue itself at frame cadence;
+    doing so can let the pipe back up and block workers on ``put()``. A small
+    background bridge keeps the OS pipe drained and hands events to the UI over
+    a plain in-process queue.
+    """
     while not stop.is_set():
         try:
             result_queue.put(event_queue.get(timeout=0.1))
         except queue.Empty:
             continue
-        except Exception:
-            if stop.is_set():
-                break
+        except (EOFError, OSError):
+            break
 
 
 def _detail_panel(title: str, body: Any, *, title_style: str = TITLE_STYLE) -> Group:
@@ -425,8 +432,10 @@ class ControlRoomApp(App[None]):
         self.refresh_per_second = refresh_per_second
         self.queue_row_map: list[int] = []
 
-        self.mp_manager = mp.Manager()
-        self.event_queue = self.mp_manager.Queue()
+        # This event stream is separate from mqdm's command bridge. A plain
+        # multiprocessing queue is enough here; no manager/proxy indirection is
+        # required just to forward structured runtime events into the UI.
+        self.event_queue: mp.Queue = mp.Queue()
         # A plain mqdm.Runtime with a queue sink — no subclass needed. Every event
         # a worker emits (print/log + task lifecycle) lands on this queue, tagged
         # with worker + task_index context.
@@ -442,7 +451,7 @@ class ControlRoomApp(App[None]):
                 "fn": fn,
                 "jobs": [spec["item"] for spec in self.specs],
                 "runtime": self.runtime,
-                "result_queue": self.local_events,
+                "event_queue": self.event_queue,
                 "desc": desc,
                 "n_workers": n_workers,
                 "pool_mode": pool_mode,
@@ -491,8 +500,9 @@ class ControlRoomApp(App[None]):
         if self.bridge_thread.is_alive():
             self.bridge_thread.join(timeout=1)
         self.runtime.uninstall_logging()
+        self.event_queue.cancel_join_thread()
+        self.event_queue.close()
         self.runtime.atexit()
-        self.mp_manager.shutdown()
 
     def action_queue_up(self) -> None:
         self._move_queue_selection(-1)
@@ -688,15 +698,16 @@ def run_control_room(
 def _demo_job(sensor_id: str, *, csv_dir: str, seed: int = 0) -> int:
     logger = logging.getLogger("mp-control-room.demo")
     rng = random.Random(seed + sum(ord(ch) for ch in sensor_id))
-    paths = [f"{csv_dir}/{sensor_id}/chunk-{i:02d}.csv" for i in range(rng.randint(13, 60))]
+    paths = [f"{csv_dir}/{sensor_id}/chunk-{i:02d}.csv" for i in range(rng.randint(13, 40))]
     desc = lambda path, i: f"{sensor_id} - {os.path.basename(path)}"
     total = 0
-    for path in mqdm.mqdm(paths, desc=desc):
-        time.sleep(rng.uniform(0.15, 0.35))
-        batches = rng.randint(8, 48)
-        for _ in mqdm.mqdm(range(batches), desc=f"parse {os.path.basename(path)}", transient=True):
-            time.sleep(rng.uniform(0.02, 0.06))
-            total += 1
+    for path in mqdm.mqdm(paths, desc=desc, leave=False):
+        time.sleep(0.05)
+        # time.sleep(rng.uniform(0.15, 0.35))
+        # batches = rng.randint(8, 48)
+        # for _ in mqdm.mqdm(range(batches), desc=f"parse {os.path.basename(path)}", leave=False):
+        #     time.sleep(rng.uniform(0.0002, 0.0006))
+        #     total += 1
         if rng.random() < 0.35:
             mqdm.print("remarkable file", path)
         logger.info("processed %s", path)
