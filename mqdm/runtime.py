@@ -4,6 +4,7 @@ import atexit
 from contextlib import contextmanager
 import logging
 import threading
+import time
 import weakref
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, Callable, Literal, TypeAlias, TypedDict
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
     from ._logging import MQDMHandler
     from .bar import mqdm as MQDMBar
     from .command_proxy import QueueCommandDispatch
+    from .events import EventEnvelope
     from .executor import T_POOL_MODE
 
 
@@ -71,7 +73,7 @@ class Runtime:
 
     def __init__(
         self,
-        on_event: Callable[[dict], Any] | None = None,
+        on_event: Callable[[EventEnvelope], Any] | None = None,
         *,
         backend_factory: ProgressBackendFactory | None = None,
         progress_kw: dict[str, Any] | None = None,
@@ -87,11 +89,14 @@ class Runtime:
         self.backend_factory: ProgressBackendFactory = backend_factory or RichProgressFactory()
         self.paused: bool = False
         self._context_key = f"runtime:{id(self)}"
-        # When set, emitted events are handed to this sink (a dict) instead of
-        # being rendered to the console. Must be picklable to reach workers — a
-        # multiprocessing queue's ``.put`` qualifies. ``None`` keeps the
-        # default console behavior.
-        self.on_event: Callable[[dict], Any] | None = on_event
+        # Event sink.  In process pools this callable is pickled and runs
+        # inside each worker, so it typically must be a transport that
+        # serialises events back to the parent process (e.g.
+        # ``multiprocessing.Queue.put`` or a picklable adapter).  For thread /
+        # sequential pools any callable works, including an in-process
+        # accumulator.  ``None`` (the default) disables the event stream so
+        # the zero-cost check in :meth:`emit` returns immediately.
+        self.on_event: Callable[[EventEnvelope], Any] | None = on_event
         self.pause_event: threading.Event = threading.Event()
         self.pause_event.set()
         self.shutdown_event: threading.Event = threading.Event()
@@ -357,11 +362,16 @@ class Runtime:
                     _clear_local(_RUNTIME_CONTEXTS_KEY)
 
     def handle_event(self, event_type: str, **data: Any) -> Any:
-        """Dispatch a runtime event. Override to centralize/customize output.
+        """Default fallback for events with no sink attached.
 
-        Terminal output is delegated to :meth:`_write`, which routes through the
-        active progress bar so it lands in whichever process owns the live
-        display (the parent process in ``pool_mode='process'``).
+        **Output events** (``print``, ``log``) are forwarded to the active
+        progress-bar console so they interleave with the live display.
+        If no progress bar is active, they fall back to the default Rich
+        console.
+
+        **Telemetry events** (``task_started``, ``task_finished``,
+        ``task_failed``) are no-ops here — they exist purely for
+        programmatic consumers attached via ``on_event``.
         """
         data.setdefault("context", self.get_context())
         if event_type == "print":
@@ -377,8 +387,13 @@ class Runtime:
         return rich.get_console().print(*args, **kw)
 
     def emit(self, event_type: str, **data: Any) -> Any:
-        """Emit an event. Routes to ``on_event`` if set, else the console."""
+        """Emit an event. Routes to ``on_event`` if set, else :meth:`handle_event`.
+
+        Every event dict receives a ``time`` timestamp (``time.time()``,
+        float) pegged to this call site and the current runtime context.
+        """
         data.setdefault("context", self.get_context())
+        data.setdefault("time", time.time())
         if self.on_event is not None:
             return self.on_event({"type": event_type, **data})
         return self.handle_event(event_type, **data)

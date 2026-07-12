@@ -68,6 +68,19 @@ from .executor import T_POOL_MODE, get_executor
 from .utils import args, fn, fopen, ratelimit
 from ._logging import MQDMHandler
 
+# ---------------------------------- Events ---------------------------------- #
+
+from .events import (
+    EventContext,
+    EventEnvelope,
+    EventType,
+    PrintEvent,
+    LogEvent,
+    TaskStartedEvent,
+    TaskFinishedEvent,
+    TaskFailedEvent,
+)
+
 # ----------------------------------- Core ----------------------------------- #
 
 from .bar import mqdm
