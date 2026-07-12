@@ -8,7 +8,7 @@ from rich import progress
 import mqdm as M
 
 from .backend import RichTaskState, TaskState
-from .command_proxy import TransportProxy, proxymethod
+from .proxy import TransportProxy, proxymethod
 
 
 class _DiscardFile:

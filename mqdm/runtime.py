@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
     from ._logging import MQDMHandler
     from .bar import mqdm as MQDMBar
-    from .command_proxy import QueueCommandDispatch
+    from .proxy import QueueCommandDispatch
     from .events import EventEnvelope
     from .executor import T_POOL_MODE
 
@@ -230,7 +230,7 @@ class Runtime:
         return self.backend_factory.create(runtime=self, columns=columns, **kw)
 
     def _ensure_command_dispatch(self) -> QueueCommandDispatch:
-        from .command_proxy import QueueCommandDispatch
+        from .proxy import QueueCommandDispatch
 
         dispatch = self.command_dispatch
         if dispatch is not None:

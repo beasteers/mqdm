@@ -11,7 +11,7 @@ from multiprocessing.managers import RemoteError
 from .runtime import Runtime, DEFAULT_REFRESH_PER_SECOND
 from . import utils
 from .executor import _get_local
-from .command_proxy import CommandTransportClosed
+from .proxy import CommandTransportClosed
 import mqdm as M
 
 if TYPE_CHECKING:
