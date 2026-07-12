@@ -84,9 +84,6 @@ class QueueTransport(Generic[TRef]):
         state['_reply_tls'] = None
         return state
 
-    # def __setstate__(self, state: dict[str, Any]) -> None:
-    #     self.__dict__.update(state)
-
     def _is_owner(self) -> bool:
         return self.target is not None and os.getpid() == self.owner_pid
 

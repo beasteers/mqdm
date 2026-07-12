@@ -63,6 +63,7 @@ def uninstall_logging(*, logger=None):
 
 # ----------------------------------- Utils ---------------------------------- #
 
+from . import utils
 from .executor import T_POOL_MODE, get_executor
 from .utils import args, fn, fopen, ratelimit
 from ._logging import MQDMHandler
@@ -84,6 +85,10 @@ __all__ = [
     'ipool',
     'apool',
     'aipool',
+    'print',
+    'sustain',
+    'pause',
+    'args',
     'PoolError',
     'configure',
 ]

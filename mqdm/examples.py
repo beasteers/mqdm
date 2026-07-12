@@ -305,9 +305,9 @@ def example_warnings(pool_mode='process', n_workers=3):
         n_workers=n_workers,
     )
 
-def main():
+def example_all():
     example_prompt()
-    example_group()
+    example_sustain()
     example_bar(n=8, sleep=0.1, transient=False)
     example_bar(n=8, sleep=0.1, transient=True)
     try:
@@ -322,7 +322,13 @@ def main():
     example_messy(n=3, transient=False, n_workers=2)
 
 
-if __name__ == '__main__':
-    all = main
+# @mqdm.iex
+def main():
+    _rich_traceback_omit = True
     import fire
-    fire.Fire()
+    fire.Fire({
+        k.removeprefix('example_'): v for k, v in globals().items() if k.startswith('example_')
+    })
+
+if __name__ == '__main__':
+    main()
