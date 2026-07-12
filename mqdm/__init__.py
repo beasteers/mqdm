@@ -1,4 +1,3 @@
-import mqdm as M  # self
 from .runtime import Runtime, _current_runtime, configure
 
 
