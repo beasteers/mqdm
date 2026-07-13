@@ -1305,6 +1305,8 @@ with a coordinated progress display built in.</p>
 
 <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </code></pre></div>
+<div id="cast-pools-async-pool" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/pools/async_pool.cast"></div>
+
 <p>These APIs are intentionally separate from the process/thread pool helpers. They
 use bounded <code>asyncio</code> task concurrency, support async iterables and async worker
 functions, and fall back to <code>asyncio.to_thread(...)</code> for sync callables.</p>

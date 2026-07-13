@@ -803,6 +803,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#mqdm.using" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        using
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -934,6 +945,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#mqdm.using" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        using
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1047,6 +1069,44 @@ immediately.</p>
     <span class="k">if</span> <span class="n">something_wrong</span><span class="p">(</span><span class="n">i</span><span class="p">):</span>
         <span class="k">with</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">pause</span><span class="p">():</span>
             <span class="kn">import</span><span class="w"> </span><span class="nn">IPython</span><span class="p">;</span> <span class="n">IPython</span><span class="o">.</span><span class="n">embed</span><span class="p">()</span>   <span class="c1"># clean screen, bars frozen</span>
+</code></pre></div>
+</details>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mqdm.using" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">mqdm.using</span>
+
+
+<a href="#mqdm.using" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">using</span><span class="p">(</span><span class="n">runtime</span><span class="p">:</span> <span class="n">Runtime</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+
+        <p>Make <code>runtime</code> the current runtime for the duration of this block.</p>
+<p>Bars, pools, prints, and logging created inside pick it up automatically, so
+you can run a differently-configured display for a section without threading
+<code>runtime=</code> through every call. Thread-local and restored on exit — safe to
+nest, and it never leaks to other threads.</p>
+<p>For a single, program-wide look, prefer :func:<code>configure</code> at startup; reach
+for this only when a specific block needs its own runtime.</p>
+
+
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="n">compact</span> <span class="o">=</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">Runtime</span><span class="p">(</span><span class="n">backend_options</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="p">(</span>
+    <span class="s2">&quot;[progress.description]</span><span class="si">{task.description}</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">mqdm</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">TwoToneColumn</span><span class="p">(</span><span class="n">bar_width</span><span class="o">=</span><span class="kc">None</span><span class="p">),</span>
+<span class="p">)})</span>
+<span class="k">with</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">using</span><span class="p">(</span><span class="n">compact</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="n">items</span><span class="p">):</span>   <span class="c1"># uses `compact`, no runtime= needed</span>
+        <span class="o">...</span>
 </code></pre></div>
 </details>
 

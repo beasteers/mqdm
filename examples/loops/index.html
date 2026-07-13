@@ -1129,19 +1129,20 @@ source itself is asynchronous.</p>
 
 
 <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">source</span><span class="p">():</span>
-    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">):</span>
-        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">50</span><span class="p">):</span>
+        <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>
         <span class="k">yield</span> <span class="n">i</span>
 
 
 <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
-    <span class="k">async</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="n">source</span><span class="p">(),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;streaming&quot;</span><span class="p">):</span>
+    <span class="k">async</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="n">source</span><span class="p">(),</span> <span class="n">total</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;streaming&quot;</span><span class="p">):</span>
         <span class="k">await</span> <span class="n">asyncio</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span>
-        <span class="n">mqdm</span><span class="o">.</span><span class="n">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;handled item </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 
 
 <span class="n">asyncio</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">main</span><span class="p">())</span>
 </code></pre></div>
+<div id="cast-loops-async-iter" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/loops/async_iter.cast" data-rows="5"></div>
+
 <p>This keeps the same loop shape as the sync API: the bar advances once per
 yielded item, and dynamic descriptions still work the same way.</p>
 <h2 id="manual-increment">Manual increment<a class="headerlink" href="#manual-increment" title="Permanent link">&para;</a></h2>
