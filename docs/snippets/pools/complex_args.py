@@ -19,11 +19,17 @@ def main():
         process_fn,
         # mqdm.args wraps function arguments so they can be 
         # applied to process_fn. 
-        [mqdm.args(x, 5, 6, some_key=keys[x]) for x in xs],
+        [
+            mqdm.args(
+                # Positional arguments for process_fn: x, arg_a=5, arg_b=6
+                x, 5, 6, 
+                # Keyword arguments for process_fn: some_key=keys[x]
+                some_key=keys[x]) 
+            for x in xs
+        ],
         n_workers=3,
 
-        # Additional keyword arguments for process_fn can be passed here.
-        # These will be passed to all tasks.
+        # Additional keyword args passed to all tasks
         arg_c=6,
     )
 

@@ -20,6 +20,8 @@ def main():
         process_fn,
         batches,
         n_workers=3,
+
+        # These will be passed to process_fn
         arg_a_for_process_fn=5,
         arg_b=6,
     )
