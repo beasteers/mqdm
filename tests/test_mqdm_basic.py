@@ -278,6 +278,34 @@ def test_mqdm_can_use_custom_runtime():
     assert runtime.pbar is None
 
 
+def test_using_scopes_current_runtime():
+    rt = M.Runtime()
+    assert M._current_runtime() is _runtime      # default before
+
+    with M.using(rt):
+        assert M._current_runtime() is rt
+        bar = M.mqdm(total=1, disable=True)       # no runtime= -> picks up rt
+        assert bar.runtime is rt
+
+    assert M._current_runtime() is _runtime      # restored after
+
+
+def test_using_nests_and_restores_on_exception():
+    a, b = M.Runtime(), M.Runtime()
+    with M.using(a):
+        with M.using(b):
+            assert M._current_runtime() is b
+        assert M._current_runtime() is a          # inner restored
+
+        with pytest.raises(ValueError):
+            with M.using(b):
+                assert M._current_runtime() is b
+                raise ValueError("boom")
+        assert M._current_runtime() is a          # restored despite exception
+
+    assert M._current_runtime() is _runtime
+
+
 def test_runtime_is_pickleable():
     runtime = M.Runtime()
 

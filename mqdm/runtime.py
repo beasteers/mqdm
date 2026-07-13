@@ -485,6 +485,42 @@ def _current_runtime() -> Runtime:
         return _runtime
 
 
+@contextmanager
+def using(runtime: Runtime):
+    """Make ``runtime`` the current runtime for the duration of this block.
+
+    Bars, pools, prints, and logging created inside pick it up automatically, so
+    you can run a differently-configured display for a section without threading
+    ``runtime=`` through every call. Thread-local and restored on exit — safe to
+    nest, and it never leaks to other threads.
+
+    For a single, program-wide look, prefer :func:`configure` at startup; reach
+    for this only when a specific block needs its own runtime.
+
+    Example:
+        ```python
+        compact = mqdm.Runtime(backend_options={"columns": (
+            "[progress.description]{task.description}",
+            mqdm.columns.TwoToneColumn(bar_width=None),
+        )})
+        with mqdm.using(compact):
+            for x in mqdm.mqdm(items):   # uses `compact`, no runtime= needed
+                ...
+        ```
+    """
+    from .parallel.executor import _get_local, _set_local, _clear_local
+
+    prev = _get_local('runtime', None)
+    _set_local(runtime=runtime)
+    try:
+        yield runtime
+    finally:
+        if prev is None:
+            _clear_local('runtime')
+        else:
+            _set_local(runtime=prev)
+
+
 def configure(**kw: Any) -> Runtime:
     """Set display options on the implicit global runtime, before its first bar.
 

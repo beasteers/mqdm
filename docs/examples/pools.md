@@ -92,6 +92,8 @@ For `asyncio` workloads, use `mqdm.aipool(...)` and `mqdm.apool(...)`.
 --8<-- "snippets/pools/async_pool.py"
 ```
 
+<div id="cast-pools-async-pool" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/pools/async_pool.cast"></div>
+
 These APIs are intentionally separate from the process/thread pool helpers. They
 use bounded `asyncio` task concurrency, support async iterables and async worker
 functions, and fall back to `asyncio.to_thread(...)` for sync callables.

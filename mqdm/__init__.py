@@ -1,4 +1,4 @@
-from .runtime import Runtime, _current_runtime, configure
+from .runtime import Runtime, _current_runtime, _runtime, configure, using
 
 
 def sustain():
@@ -150,4 +150,5 @@ __all__ = [
     'args',
     'PoolError',
     'configure',
+    'using',
 ]

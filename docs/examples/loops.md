@@ -43,6 +43,8 @@ source itself is asynchronous.
 --8<-- "snippets/loops/async_iter.py"
 ```
 
+<div id="cast-loops-async-iter" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/loops/async_iter.cast" data-rows="5"></div>
+
 This keeps the same loop shape as the sync API: the bar advances once per
 yielded item, and dynamic descriptions still work the same way.
 
