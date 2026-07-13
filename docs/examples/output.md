@@ -63,3 +63,14 @@ You can also define your own custom column types by subclassing `rich.progress.P
 
 <div id="cast-output-custom-column-type" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/output/custom_column_type.cast"></div>
 
+## Multiple runtimes
+
+It is possible to run multiple progress bars with different settings simultaneously by creating separate `mqdm.Runtime` instances for each bar.
+
+This is more experimental and not a common use case. I'm not sure what that interaction is at the end there.
+
+```python
+--8<-- "snippets/output/double.py"
+```
+
+<div id="cast-output-double" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/output/double.cast"></div>
