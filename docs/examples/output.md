@@ -1,7 +1,5 @@
 # Output
 
-`mqdm` is most useful once your work does more than quietly iterate.
-
 These patterns keep terminal output readable while progress bars are active.
 
 ## Printing above the bars
