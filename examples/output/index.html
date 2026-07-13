@@ -589,6 +589,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#multiple-runtimes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multiple runtimes
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -956,6 +967,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#multiple-runtimes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multiple runtimes
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1133,6 +1155,42 @@ to render per-task fields.</p>
     <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span>
 </code></pre></div>
 <div id="cast-output-custom-column-type" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/output/custom_column_type.cast"></div>
+
+<h2 id="multiple-runtimes">Multiple runtimes<a class="headerlink" href="#multiple-runtimes" title="Permanent link">&para;</a></h2>
+<p>It is possible to run multiple progress bars with different settings simultaneously by creating separate <code>mqdm.Runtime</code> instances for each bar.</p>
+<p>This is more experimental and not a common use case. I'm not sure what that interaction is at the end there.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">mqdm</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">rich.progress</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">zip_longest</span>
+
+<span class="n">runtime1</span> <span class="o">=</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">Runtime</span><span class="p">()</span>
+<span class="n">runtime2</span> <span class="o">=</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">Runtime</span><span class="p">(</span><span class="n">backend_options</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="p">(</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">SpinnerColumn</span><span class="p">(</span><span class="s1">&#39;moon&#39;</span><span class="p">),</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">SpinnerColumn</span><span class="p">(</span><span class="s1">&#39;moon&#39;</span><span class="p">),</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">SpinnerColumn</span><span class="p">(</span><span class="s1">&#39;moon&#39;</span><span class="p">),</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">SpinnerColumn</span><span class="p">(</span><span class="s1">&#39;moon&#39;</span><span class="p">),</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">SpinnerColumn</span><span class="p">(</span><span class="s1">&#39;moon&#39;</span><span class="p">),</span>
+    <span class="s2">&quot;[bold]</span><span class="si">{task.description}</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">BarColumn</span><span class="p">(</span><span class="n">bar_width</span><span class="o">=</span><span class="kc">None</span><span class="p">),</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">SpinnerColumn</span><span class="p">(</span><span class="s1">&#39;moon&#39;</span><span class="p">),</span>
+<span class="p">)})</span>
+<span class="c1"># Reordered mix of Rich and mqdm columns: count, then the two-tone bar, then ETA.</span>
+<span class="n">runtime3</span> <span class="o">=</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">Runtime</span><span class="p">(</span><span class="n">backend_options</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="p">(</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">SpinnerColumn</span><span class="p">(</span><span class="s1">&#39;moon&#39;</span><span class="p">),</span>
+    <span class="n">mqdm</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">MofNColumn</span><span class="p">(),</span>
+    <span class="n">rich</span><span class="o">.</span><span class="n">progress</span><span class="o">.</span><span class="n">SpinnerColumn</span><span class="p">(</span><span class="s1">&#39;moon&#39;</span><span class="p">),</span>
+<span class="p">)})</span>
+
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">zip_longest</span><span class="p">(</span>
+    <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;runtime 1&quot;</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">runtime1</span><span class="p">),</span>
+    <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;runtime 2&quot;</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">runtime2</span><span class="p">),</span>
+    <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;runtime 3&quot;</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">runtime3</span><span class="p">),</span>
+<span class="p">):</span>
+    <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.2</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Hellooo&quot;</span><span class="p">)</span>
+</code></pre></div>
+<div id="cast-output-double" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/output/double.cast"></div>
 
 
 

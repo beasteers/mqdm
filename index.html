@@ -962,6 +962,7 @@ The less ret-con-y name is "multiprocessing tqdm" :)</p>
 <div id="cast-home-main" class="asciinema-player mqdm-cast" data-cast-src="assets/casts/home/main.cast" data-cols="80"></div>
 
 <h2 id="the-basic-shape">The basic shape<a class="headerlink" href="#the-basic-shape" title="Permanent link">&para;</a></h2>
+<p><code>mqdm</code> wraps an iterable, just like <code>tqdm</code>.</p>
 <div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">mqdm</span>
@@ -982,6 +983,45 @@ The less ret-con-y name is "multiprocessing tqdm" :)</p>
 </code></pre></div>
 <div id="cast-home-basic" class="asciinema-player mqdm-cast" data-cast-src="assets/casts/home/basic_shape.cast"></div>
 
+<p>The same shape also seamlessly scales to parallel work:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">mqdm</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">doing_something</span><span class="p">(</span><span class="n">thing</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Process a given thing.&quot;&quot;&quot;</span>
+    <span class="n">items</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">thing</span><span class="p">)</span> <span class="o">*</span> <span class="mi">14</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="n">items</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="k">lambda</span> <span class="n">_</span><span class="p">,</span> <span class="n">i</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">thing</span><span class="si">}</span><span class="s2"> · #</span><span class="si">{</span><span class="n">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">):</span>
+        <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">thing</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">thing</span>
+
+
+<span class="n">things</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;cats&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;clouds&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;notes&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;pigeons&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;rock&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;shoelaces&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;moss&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;sparrows&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="c1"># An outer progress bar shows the pool progress.</span>
+    <span class="c1"># Each worker has its own inner progress bar for the work inside that item.</span>
+    <span class="n">mqdm</span><span class="o">.</span><span class="n">pool</span><span class="p">(</span>
+        <span class="n">doing_something</span><span class="p">,</span> 
+        <span class="n">things</span><span class="p">,</span> 
+        <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;looking at&quot;</span><span class="p">,</span> 
+        <span class="n">n_workers</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</code></pre></div>
+<div id="cast-home-why" class="asciinema-player mqdm-cast" data-cast-src="assets/casts/home/why_mqdm.cast"></div>
+
 <h2 id="why-mqdm">Why mqdm?<a class="headerlink" href="#why-mqdm" title="Permanent link">&para;</a></h2>
 <p><code>mqdm</code> gives you:</p>
 <ul>
@@ -991,40 +1031,6 @@ The less ret-con-y name is "multiprocessing tqdm" :)</p>
 <li>pretty progress bars and TUI integration, powered by <a href="https://rich.readthedocs.io/en/stable/introduction.html"><code>rich</code></a></li>
 <li>progress-safe printing and logging across processes</li>
 </ul>
-<p>The same shape also seamlessly scales to parallel work:</p>
-<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">mqdm</span>
-
-
-<span class="k">def</span><span class="w"> </span><span class="nf">doing_something</span><span class="p">(</span><span class="n">item</span><span class="p">):</span>
-    <span class="n">thing</span><span class="p">,</span> <span class="n">total</span> <span class="o">=</span> <span class="n">item</span>
-    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">mqdm</span><span class="o">.</span><span class="n">mqdm</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">total</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="k">lambda</span> <span class="n">_</span><span class="p">,</span> <span class="n">i</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">thing</span><span class="si">}</span><span class="s2"> · #</span><span class="si">{</span><span class="n">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">):</span>
-        <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.03</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">thing</span>
-
-
-<span class="n">things</span> <span class="o">=</span> <span class="p">[</span>
-    <span class="p">(</span><span class="s2">&quot;cats&quot;</span><span class="p">,</span> <span class="mi">36</span><span class="p">),</span>
-    <span class="p">(</span><span class="s2">&quot;clouds&quot;</span><span class="p">,</span> <span class="mi">44</span><span class="p">),</span>
-    <span class="p">(</span><span class="s2">&quot;notes&quot;</span><span class="p">,</span> <span class="mi">52</span><span class="p">),</span>
-    <span class="p">(</span><span class="s2">&quot;pigeons&quot;</span><span class="p">,</span> <span class="mi">60</span><span class="p">),</span>
-    <span class="p">(</span><span class="s2">&quot;rock&quot;</span><span class="p">,</span> <span class="mi">68</span><span class="p">),</span>
-    <span class="p">(</span><span class="s2">&quot;shoelaces&quot;</span><span class="p">,</span> <span class="mi">76</span><span class="p">),</span>
-    <span class="p">(</span><span class="s2">&quot;moss&quot;</span><span class="p">,</span> <span class="mi">84</span><span class="p">),</span>
-    <span class="p">(</span><span class="s2">&quot;sparrows&quot;</span><span class="p">,</span> <span class="mi">92</span><span class="p">),</span>
-<span class="p">]</span>
-
-<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
-    <span class="c1"># An outer progress bar shows the pool progress.</span>
-    <span class="c1"># Each worker has its own inner progress bar for the work inside that item.</span>
-    <span class="n">mqdm</span><span class="o">.</span><span class="n">pool</span><span class="p">(</span><span class="n">doing_something</span><span class="p">,</span> <span class="n">things</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;looking at&quot;</span><span class="p">,</span> <span class="n">n_workers</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
-
-
-<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
-    <span class="n">main</span><span class="p">()</span>
-</code></pre></div>
-<div id="cast-home-why" class="asciinema-player mqdm-cast" data-cast-src="assets/casts/home/why_mqdm.cast"></div>
-
 <h2 id="get-started">Get Started<a class="headerlink" href="#get-started" title="Permanent link">&para;</a></h2>
 <p>For an end-to-end example, start with <a href="examples/">Examples</a>. </p>
 <p>For examples for how to use mqdm, see:</p>
