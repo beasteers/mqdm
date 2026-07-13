@@ -11,16 +11,19 @@ Additionally, worker functions can have their own progress bars, which integrate
 
 ## Simple sequential
 
+You can run both sequential and parallel workloads using the same shape code with `mqdm.pool`. 
+
 ```python
 --8<-- "snippets/pools/simple_sequential.py"
 ```
 
 <div id="cast-pools-simple-seq" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/pools/simple_sequential.cast"></div>
 
-With small inputs, `squeeze_=True` can collapse the work down to sequential mode.
-Otherwise, the default pool mode is `"process"` and the default worker limit is `8`.
+The pool will run tasks sequentially when either `n_workers=0` or `pool_mode='sequential'`.
 
 ## Simple parallel processes
+
+To run tasks in parallel, provide the number of workers via the `n_workers` argument. The default pool_mode is `"process"`.
 
 ```python
 --8<-- "snippets/pools/simple_parallel.py"
@@ -28,7 +31,6 @@ Otherwise, the default pool mode is `"process"` and the default worker limit is 
 
 <div id="cast-pools-simple-par" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/pools/simple_parallel.cast"></div>
 
-To run tasks in parallel, provide the number of workers via the `n_workers` argument. The default pool_mode is `"process"`.
 
 ## Simple parallel threads
 
