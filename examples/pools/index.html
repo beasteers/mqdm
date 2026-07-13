@@ -1092,6 +1092,7 @@
 <p>It wraps around <code>concurrent.futures</code> (builtin library) and provides a progress bar for monitoring the execution of the task queue.</p>
 <p>Additionally, worker functions can have their own progress bars, which integrate seamlessly with the main pool progress display.</p>
 <h2 id="simple-sequential">Simple sequential<a class="headerlink" href="#simple-sequential" title="Permanent link">&para;</a></h2>
+<p>You can run both sequential and parallel workloads using the same shape code with <code>mqdm.pool</code>. </p>
 <div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">mqdm</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 
@@ -1117,9 +1118,9 @@
 </code></pre></div>
 <div id="cast-pools-simple-seq" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/pools/simple_sequential.cast"></div>
 
-<p>With small inputs, <code>squeeze_=True</code> can collapse the work down to sequential mode.
-Otherwise, the default pool mode is <code>"process"</code> and the default worker limit is <code>8</code>.</p>
+<p>The pool will run tasks sequentially when either <code>n_workers=0</code> or <code>pool_mode='sequential'</code>.</p>
 <h2 id="simple-parallel-processes">Simple parallel processes<a class="headerlink" href="#simple-parallel-processes" title="Permanent link">&para;</a></h2>
+<p>To run tasks in parallel, provide the number of workers via the <code>n_workers</code> argument. The default pool_mode is <code>"process"</code>.</p>
 <div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">mqdm</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 
@@ -1147,7 +1148,6 @@ Otherwise, the default pool mode is <code>"process"</code> and the default worke
 </code></pre></div>
 <div id="cast-pools-simple-par" class="asciinema-player mqdm-cast" data-cast-src="../../assets/casts/pools/simple_parallel.cast"></div>
 
-<p>To run tasks in parallel, provide the number of workers via the <code>n_workers</code> argument. The default pool_mode is <code>"process"</code>.</p>
 <h2 id="simple-parallel-threads">Simple parallel threads<a class="headerlink" href="#simple-parallel-threads" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">mqdm</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
