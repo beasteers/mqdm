@@ -14,16 +14,32 @@ pip install mqdm
 
 ```python
 import time
-import mqdm as M
+import mqdm
 
-for folder in M.mqdm(["cats", "clouds", "notes"], desc="indexing"):
-    for _ in M.mqdm(range(5), desc=lambda _, i: f"{folder} · file {i + 1}"):
+for folder in mqdm.mqdm(["cats", "clouds", "notes"], desc="indexing"):
+    for _ in mqdm.mqdm(range(5), desc=lambda _, i: f"{folder} · file {i + 1}"):
         time.sleep(0.05)
 ```
 
-## Docs
+In parallel:
+```python
+import time
+import mqdm
 
-The main documentation now lives in the MkDocs site under [docs](https://beasteers.github.io/mqdm).
+def do_work(folder):
+    for _ in mqdm.mqdm(range(5), desc=lambda _, i: f"{folder} · file {i + 1}"):
+        time.sleep(0.05)
+
+def main():
+    mqdm.pool(do_work, ["cats", "clouds", "notes"], desc="indexing", n_workers=3)
+    
+if __name__ == "__main__":
+    main()
+```
+
+Full docs can be found [here](https://beasteers.github.io/mqdm).
+
+## Docs
 
 Local preview:
 
