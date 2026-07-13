@@ -2,12 +2,7 @@
 
 Pretty, worker-aware progress bars for Python.
 
-`mqdm` keeps a `tqdm`-like feel, but is designed to stay pleasant when you add:
-
-- nested progress bars
-- threads or processes
-- progress-safe printing
-- logging and warnings above the bars
+`mqdm` keeps a `tqdm`-like feel, but is designed to work seamlessly across parallel workers. 
 
 ## Install
 
